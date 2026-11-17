@@ -8,6 +8,8 @@ extends SceneTree
 var main
 var t0 := 0
 var ai := ECAI.new(1, 9)
+var printed := false
+var stop_t := 0
 
 func _init() -> void:
 	main = load("res://scenes/Main.tscn").instantiate()
@@ -61,6 +63,14 @@ func _run() -> void:
 			continue
 		var e: ECEngine = view.engine
 		var req: Dictionary = view.pending
+		var stop_r := int(OS.get_environment("EC_ROUNDS")) if OS.get_environment("EC_ROUNDS") != "" else 99
+		if e.round_n >= stop_r and e.phase == "action" and not printed:
+			printed = true
+			print("ECTEST round ", e.round_n, " | ", e.fingerprint())
+			stop_t = Time.get_ticks_msec()
+		if printed and Time.get_ticks_msec() - stop_t > 40000:
+			quit(0)
+			return
 		if not req.is_empty() and view.online_mine():
 			view._submit(ai.decide(e, req["seat"], req))
 		if e.phase == "over":

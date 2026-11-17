@@ -118,5 +118,7 @@ for path, o in tutti():
     if nick in MODELLI and o.get('CustomMesh') and not path:
         f = loc(o['CustomMesh']['MeshURL'])
         if f:
-            shutil.copy(f, f'{OUT}/assets/modelli/{MODELLI[nick]}.obj')
+            # senza materiali esterni (.mtl): il colore lo dà il gioco
+            righe = [l for l in open(f, encoding='utf-8', errors='ignore') if not l.startswith(('mtllib', 'usemtl'))]
+            open(f'{OUT}/assets/modelli/{MODELLI[nick]}.obj', 'w', encoding='utf-8').writelines(righe)
 print('fatto')

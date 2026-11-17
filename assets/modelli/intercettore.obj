@@ -1,6 +1,5 @@
 # Blender v2.71 (sub 0) OBJ File: 'smallship.blend'
 # www.blender.org
-mtllib smallship15obj.mtl
 o Cube
 v -0.281305 -0.194575 0.735135
 v -0.281305 -0.194575 -0.551089
@@ -2824,7 +2823,6 @@ vt 0.986951 0.080191
 vt 0.351279 0.000000
 vt 0.337370 0.312327
 vt 0.177458 0.943385
-usemtl Material
 s off
 f 10/1 11/2 2/3 6/4
 f 6/5 2/6 3/7 7/8

@@ -1,6 +1,5 @@
 # Blender v2.71 (sub 0) OBJ File: 'meduimshipCOPY.blend'
 # www.blender.org
-mtllib meduimship5.mtl
 o Cube.006_Cube.008
 v -0.018603 -0.066968 0.710106
 v -0.217983 -0.066968 0.510727
@@ -4463,7 +4462,6 @@ vt 0.890705 0.248211
 vt 0.910903 0.254851
 vt 0.992991 0.219890
 vt 0.972799 0.227506
-usemtl Material
 s off
 f 2/1 16/2 17/3
 f 31/4 37/5 16/6
