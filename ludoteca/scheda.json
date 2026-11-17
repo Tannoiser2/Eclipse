@@ -1,0 +1,10 @@
+{
+  "titolo": "Eclipse",
+  "sottotitolo": "Seconda Alba per la Galassia",
+  "descrizione": "Il 4X di fantascienza di Touko Tahkokallio: da 2 a 6 civiltà (sei fazioni terrestri e sei specie aliene) esplorano la galassia esagono dopo esagono, colonizzano i pianeti, ricercano tecnologie, progettano le proprie navi e combattono contro Antichi, Guardiani, il Sistema di Difesa del Centro Galattico e fra loro. Mappa 3D con le tessere originali e i modelli delle navi, tutto in italiano, IA per i posti vuoti, online con gli amici e partite salvate su Firebase.",
+  "online": true,
+  "sezione": "conversione",
+  "ordine": 201,
+  "bgg": 246900,
+  "generi": ["Fantascienza", "4X"]
+}
