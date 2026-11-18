@@ -3,6 +3,18 @@ extends RefCounted
 ## dell'immagine (0-1). Ricavate dai colori delle caselle; le caselle grigie a mano.
 
 const POS := {
+	233: [Vector2(0.464, 0.271), Vector2(0.319, 0.708), Vector2(0.445, 0.708), Vector2(0.645, 0.735)],
+	234: [Vector2(0.590, 0.298), Vector2(0.613, 0.716), Vector2(0.730, 0.713)],
+	236: [Vector2(0.580, 0.299), Vector2(0.697, 0.294), Vector2(0.280, 0.620), Vector2(0.689, 0.680)],
+	238: [Vector2(0.590, 0.269), Vector2(0.312, 0.717), Vector2(0.441, 0.716), Vector2(0.742, 0.734)],
+	295: [],
+	393: [Vector2(0.388, 0.286)],
+	394: [Vector2(0.391, 0.269)],
+	395: [],
+	396: [],
+	397: [Vector2(0.235, 0.390), Vector2(0.350, 0.390), Vector2(0.628, 0.311), Vector2(0.299, 0.695), Vector2(0.626, 0.757)],
+	398: [Vector2(0.342, 0.342), Vector2(0.657, 0.321), Vector2(0.248, 0.582), Vector2(0.550, 0.710), Vector2(0.675, 0.710)],
+	399: [],
 	1: [Vector2(0.566, 0.234), Vector2(0.696, 0.232), Vector2(0.199, 0.445), Vector2(0.196, 0.574), Vector2(0.580, 0.780), Vector2(0.709, 0.781)],
 	101: [Vector2(0.319, 0.237), Vector2(0.446, 0.235), Vector2(0.717, 0.291)],
 	102: [Vector2(0.306, 0.726), Vector2(0.437, 0.722)],

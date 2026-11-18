@@ -344,8 +344,29 @@ func _side() -> void:
 		side_box.add_child(row)
 	# progetti delle navi
 	side_box.add_child(UI.heading("Progetti delle navi", 19))
-	for s in D.SHIP_TYPES:
+	for s in st["types"]:
 		side_box.add_child(_bp_row(p, s, null))
+	# espansioni: specie minori, santuari, scoperta dei Custodi
+	if not st["minors"].is_empty():
+		var mn := []
+		for m in st["minors"]:
+			mn.append(D.MINORS[m]["name"])
+		side_box.add_child(UI.wrap(UI.label("Specie minori alleate: " + ", ".join(mn), 16, UI.GREEN), SIDE_W - 40))
+	if st["S"].get("shrines", false):
+		side_box.add_child(UI.wrap(UI.label("Santuari costruiti: %d su 9" % st["shrines"].size(), 16, UI.GOLD_L), SIDE_W - 40))
+	if not st["tech_disc"].is_empty():
+		side_box.add_child(UI.wrap(UI.label("Scoperta sotto i tracciati: si risolve alla quarta tecnologia di un tracciato.", 16, UI.MUTED), SIDE_W - 40))
+	var hole := 0
+	for sh in e.ships:
+		if int(sh["p"]) == p and sh["h"] == "hole":
+			hole += 1
+	if hole > 0:
+		side_box.add_child(UI.wrap(UI.label("Navi nel buco nero: %d" % hole, 16, UI.PINK), SIDE_W - 40))
+	if e.minors_on and not e.minors.is_empty():
+		var av := []
+		for m in e.minors:
+			av.append("%s (%d denaro)" % [D.MINORS[m]["name"], int(D.MINORS[m]["cost"])])
+		side_box.add_child(UI.wrap(UI.label("Specie minori libere: " + ", ".join(av), 15, UI.MUTED), SIDE_W - 40))
 	if not st["spare"].is_empty():
 		var sp := HBoxContainer.new()
 		sp.add_child(UI.label("Parti antiche da montare:", 16, UI.MUTED))
@@ -524,6 +545,13 @@ func _on_fx(kind: String, d: Dictionary) -> void:
 			toast("Relazioni diplomatiche: %s e %s" % [e.pname(d["p"]), e.pname(d["q"])], UI.GREEN)
 		"eliminated":
 			toast("La civiltà di %s è crollata." % e.pname(d["p"]), UI.RED)
+		"supernova":
+			toast("Una supernova esplode!", UI.RED)
+			board.focus_hex(d["h"])
+		"minor":
+			toast("%s si allea con la specie minore %s" % [e.pname(d["p"]), D.MINORS[d["m"]]["name"]], UI.GREEN)
+		"shrine":
+			toast("%s costruisce un santuario" % e.pname(d["p"]), UI.GOLD_L)
 	_dirty = true
 
 
@@ -807,6 +835,8 @@ func _on_decision(req: Dictionary) -> void:
 		"battle": _ui_battle(req)
 		"artifact": _ui_artifact(req)
 		"warp": _ui_warp(req)
+		"hole": _ui_hole(req)
+		"shrine": _ui_shrine(req)
 		_:
 			_submit({"stop": true})
 
@@ -855,6 +885,13 @@ func _ui_turn(req: Dictionary) -> void:
 	if req.get("colony", false):
 		_pbtn("Colonizza", func(): _submit({"a": "colony"}))
 	_pbtn("Scambia", func(): _ui_trade(req))
+	for pk in req.get("pulsars", []):
+		var pkk: String = pk
+		_pbtn("Pulsar di %s" % _hname(pk), func(): _ui_pulsar(req, pkk))
+	if not req.get("minors", []).is_empty():
+		_pbtn("Specie minori", func(): _ui_minors(req))
+	if req.get("colony_res", false):
+		_pbtn("Nave coloniale: risorsa", func(): _ui_colony_res(req))
 	for q in req.get("diplo", []):
 		var qq: int = q
 		_pbtn("Diplomazia con %s" % e.pname(q), func(): _submit({"a": "diplo", "t": qq}))
@@ -1013,7 +1050,7 @@ func _ui_part(req: Dictionary) -> void:
 	if outside:
 		var r := HBoxContainer.new()
 		r.add_theme_constant_override("separation", 10)
-		for s in D.SHIP_TYPES:
+		for s in e.ps[p]["types"]:
 			var ss: String = s
 			var b := UI.button(D.SHIP_NAME[s], 0, 54, 20)
 			b.pressed.connect(func(): _submit({"s": ss}))
@@ -1023,7 +1060,7 @@ func _ui_part(req: Dictionary) -> void:
 	var valid := {}
 	for o in req["opts"]:
 		valid["%s_%d" % [o[0], int(o[1])]] = true
-	for s in D.SHIP_TYPES:
+	for s in e.ps[p]["types"]:
 		var row := _bp_row(p, s, func(ss, ii):
 			if valid.has("%s_%d" % [ss, ii]):
 				_submit({"s": ss, "i": ii}))
@@ -1155,7 +1192,7 @@ func _ui_upgrade(req: Dictionary) -> void:
 		var with_opts := {}
 		for o in opts:
 			with_opts["%s_%d" % [o["s"], int(o["i"])]] = true
-		for s in D.SHIP_TYPES:
+		for s in e.ps[p]["types"]:
 			var row := _bp_row(p, s, func(ss, ii):
 				aux["slot"] = "%s_%d" % [ss, ii]
 				self_ref.call(self_ref))
@@ -1425,3 +1462,109 @@ func _ui_warp(req: Dictionary) -> void:
 		_hot(k, Color("#b07cff"))
 	aux["hex_cb"] = func(k): _submit({"h": k})
 	board._refresh_marks()
+
+
+
+# ================================================================ espansioni
+
+func _ui_pulsar(req: Dictionary, k: String) -> void:
+	var e := engine
+	var cur: String = str(e.hexes[k].get("pulsar", "mov"))
+	for c in prompt_box.get_children():
+		c.queue_free()
+	_ptitle("%sPulsar di %s: sposta il disco su un'altra azione e fanne un'attivazione, senza usare un disco (una volta per round)." % [_who(req), _hname(k)])
+	for a in D.PULSAR_ACTS:
+		if a == cur:
+			continue
+		var aa: String = a
+		_pbtn(D.ACTION_NAME[a], func(): _submit({"a": "pulsar", "h": k, "act": aa}), true)
+	_pbtn("Indietro", func():
+		for c in prompt_box.get_children():
+			c.queue_free()
+		_ui_turn(req))
+
+
+func _ui_minors(req: Dictionary) -> void:
+	var e := engine
+	var dlg := _dialog("Specie minori", 860)
+	dlg["box"].add_child(UI.wrap(UI.label("Paghi il denaro indicato e metti l'ambasciatore della specie minore su una casella ambasciatore libera della tua reputazione. L'effetto vale subito; ogni specie minore è di una sola civiltà.", 19, UI.MUTED), 820))
+	for m in req["minors"]:
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 12)
+		var mm: String = m
+		var b := UI.primary(UI.button("%s (%d denaro)" % [D.MINORS[m]["name"], int(D.MINORS[m]["cost"])], 300, 54, 19))
+		b.pressed.connect(func(): _submit({"a": "minor", "m": mm}))
+		row.add_child(b)
+		row.add_child(UI.wrap(UI.label(D.MINORS[m]["txt"], 18, UI.TEXT), 500))
+		dlg["box"].add_child(row)
+	var cl := UI.button("Annulla", 200, 50, 20)
+	cl.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	cl.pressed.connect(func(): dlg["root"].queue_free())
+	dlg["box"].add_child(cl)
+
+
+func _ui_colony_res(req: Dictionary) -> void:
+	for c in prompt_box.get_children():
+		c.queue_free()
+	_ptitle("%sGiri una nave coloniale inutilizzata e ricevi una risorsa: quale?" % _who(req))
+	for r in D.RES:
+		var rr: String = r
+		_pbtn(D.RES_NAME[r], func(): _submit({"a": "colony_res", "r": rr}), true)
+	_pbtn("Indietro", func():
+		for c in prompt_box.get_children():
+			c.queue_free()
+		_ui_turn(req))
+
+
+func _ui_hole(req: Dictionary) -> void:
+	var e := engine
+	if req.get("forced", false):
+		_ptitle("%sLa nave riemerge subito dal buco nero: scegli dove (settori accesi)." % _who(req))
+	else:
+		_ptitle("%sUn tuo %s può uscire dal buco nero in questo round: scegli dove, oppure aspetta (se non esce entro il round va perso)." % [_who(req), D.SHIP_NAME[req["t"]].to_lower()])
+		_pbtn("Non ora", func(): _submit({"stop": true}))
+	board.hot = {}
+	for k in req["opts"]:
+		_hot(k, UI.PINK)
+	aux["hex_cb"] = func(k): _submit({"h": k})
+	board._refresh_marks()
+
+
+func _ui_shrine(req: Dictionary) -> void:
+	var e := engine
+	var p: int = req["seat"]
+	var by := {}
+	for o in req["opts"]:
+		var i := int(o["i"])
+		if not by.has(i):
+			by[i] = []
+		by[i].append(o)
+	var dlg := _dialog("Santuario", 900)
+	dlg["box"].add_child(UI.wrap(UI.label("Con la Ricerca puoi costruire un santuario accanto a un pianeta del colore della risorsa (o grigio) in un tuo settore. Ogni fila completata dà un premio; ogni santuario vale 1 PV nei settori che controlli.", 19, UI.MUTED), 860))
+	for row in 3:
+		dlg["box"].add_child(UI.label("Fila %d: %s" % [row + 1, D.SHRINE_ROW[row]], 19, UI.GOLD_L, UI.font_semi))
+		var fl := HFlowContainer.new()
+		fl.add_theme_constant_override("h_separation", 8)
+		for j in 3:
+			var i := row * 3 + j
+			var r: String = D.SHRINES[i][0]
+			if e.ps[p]["shrines"].has(i):
+				fl.add_child(UI.label("costruito", 17, UI.GREEN))
+				continue
+			if not by.has(i):
+				fl.add_child(UI.label("%d %s: non ora" % [int(D.SHRINES[i][1]), D.RES_NAME[r].to_lower()], 17, UI.MUTED))
+				continue
+			var seen_h := {}
+			for o in by[i]:
+				if seen_h.has(o["h"]):
+					continue
+				seen_h[o["h"]] = true
+				var oo: Dictionary = o
+				var b := UI.button("%d %s in %s" % [int(D.SHRINES[i][1]), D.RES_NAME[r].to_lower(), _hname(o["h"])], 0, 50, 18)
+				b.pressed.connect(func(): _submit({"i": oo["i"], "h": oo["h"], "pl": oo["pl"]}))
+				fl.add_child(b)
+		dlg["box"].add_child(fl)
+	var stop := UI.button("Nessun santuario", 260, 54, 20)
+	stop.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	stop.pressed.connect(func(): _submit({"stop": true}))
+	dlg["box"].add_child(stop)

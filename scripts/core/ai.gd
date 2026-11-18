@@ -9,6 +9,7 @@ const D = preload("res://scripts/data/ec_data.gd")
 
 var level := 1
 var rng := RandomNumberGenerator.new()
+var ab := ""                      # varianti per i confronti delle simulazioni
 var plan := {}                    # obiettivo d'attacco: {h, ships: [id]}
 
 
@@ -51,6 +52,10 @@ func decide(e, p: int, req: Dictionary):
 			return {"r": "s" if e.round_n <= 4 else "m"}
 		"warp":
 			return {"h": req["opts"][0]}
+		"hole":
+			return _hole(e, p, req)
+		"shrine":
+			return _shrine(e, p, req)
 	return {"stop": true}
 
 
@@ -63,9 +68,14 @@ func _margin(e, p: int, extra_discs := 1) -> float:
 	var up := 0
 	if dsc < D.INF_SPACES:
 		up = D.INF_VALUES[clampi(12 - dsc, 0, 12)]
-	var rate: int = e.trade_rate(p)
-	var other: float = float(int(st["res"]["m"]) + int(st["res"]["s"])) / rate
-	return float(int(st["res"]["$"]) + e.prod(p, "$") - up) + other * 0.35
+	# le altre risorse si possono scambiare al mantenimento: se ne tiene una scorta per costruire e ricercare
+	var other := 0.0
+	var keep: int = 6 if e.round_n < 7 else 0
+	for r in ["m", "s"]:
+		var tp: Array = e.trade_pair(p, r)
+		other += float(int(max(0, int(st["res"][r]) - keep) / int(tp[0])) * int(tp[1]))
+	var w := 0.6 if level >= 1 and ab.find("f") < 0 else 0.3
+	return float(int(st["res"]["$"]) + e.prod(p, "$") - up) + other * w
 
 
 # ================================================================ turno
@@ -74,12 +84,19 @@ func _turn(e, p: int, req: Dictionary) -> Dictionary:
 	var opts: Array = req["opts"]
 	if req.get("colony", false):
 		return {"a": "colony"}
+	var mp := _minor_pick(e, p, req)
+	if mp != "":
+		return {"a": "minor", "m": mp}
+	if not req.get("passed", false):
+		var pk := _pulsar_pick(e, p, req)
+		if not pk.is_empty():
+			return pk
 	var dip: Array = req.get("diplo", [])
-	if not dip.is_empty() and level >= 1:
+	if not dip.is_empty() and level >= 1 and ab.find("g") < 0:
 		return {"a": "diplo", "t": dip[0]}
 	var margin := _margin(e, p)
 	var best := "pass"
-	var bv := 0.8 + (0.0 if level >= 2 else 0.4)
+	var bv := 1.0 + (0.0 if level >= 2 and ab.find("b") < 0 else 0.5)
 	if req.get("passed", false):
 		# reazioni: solo per difendersi o per non lasciare risorse inutilizzate
 		if opts.has("r_mov") and margin > 2 and _defense_target(e, p) != {}:
@@ -102,14 +119,23 @@ func _turn(e, p: int, req: Dictionary) -> Dictionary:
 				v = _value_move(e, p)
 			"inf":
 				v = _value_influence(e, p)
-		v += rng.randf() * (0.6 if level == 0 else 0.25)
+		v += rng.randf() * (0.6 if level == 0 or ab.find("e") >= 0 else 0.25)
 		if v > bv:
 			bv = v
 			best = a
+	# bancarotta tattica: nei primi round si può andare un po' in rosso e lasciare i settori meno utili
+	var floor_m := -2.0
+	if level >= 1 and ab.find("A") >= 0 and e.round_n <= 2 and best == "exp":
+		floor_m = -5.0
 	if best != "pass" and margin < 0:
 		# un disco in più non si potrebbe pagare: solo se l'azione vale molto
-		if bv < 8.0 or margin < -2:
+		if bv < 6.0 or margin < floor_m:
 			best = "pass"
+	elif best != "pass" and margin < 2 and bv < 2.0 and e.round_n < 8:
+		best = "pass"
+	if best == "pass" and req.get("colony_res", false) and not req.get("colony", false):
+		var need := "$" if _margin(e, p, 0) < 2 else ("s" if int(e.ps[p]["res"]["s"]) < 8 else "m")
+		return {"a": "colony_res", "r": need}
 	return {"a": best}
 
 
@@ -117,7 +143,9 @@ func _turn(e, p: int, req: Dictionary) -> Dictionary:
 
 func _sector_value(e, p: int, num: int) -> float:
 	var S: Dictionary = D.SECTORS[num]
-	var v := float(S["vp"]) * 0.8
+	if S.get("nebula", false) or S.has("hole"):
+		return 0.3
+	var v: float = float(S["vp"]) * (0.8 + e.round_n * 0.12)
 	for code in S["pl"]:
 		var adv: bool = code.ends_with("*")
 		var t: String = code.replace("*", "")
@@ -144,17 +172,20 @@ func _sector_value(e, p: int, num: int) -> float:
 
 
 func _value_explore(e, p: int) -> float:
-	if e.explore_zones(p).is_empty():
+	var zones: Array = e.explore_zones(p)
+	if zones.is_empty():
 		return 0.0
 	if int(e.ps[p]["discs"]) < 2:
 		return 0.5
-	if _margin(e, p, 2) < 0:
-		return 1.0
 	var r: int = e.round_n
-	var base := 7.0 - r * 0.8
+	if _margin(e, p, 2) < (-4 if r <= 2 and level >= 1 and ab.find("A") >= 0 else -1):
+		return 1.0
+	var base := 8.5 - r * 0.95
 	var own: int = e.controls(p).size()
 	if own < 4:
 		base += 1.5
+	if zones.size() <= 1:
+		base -= 1.0
 	return max(base, 0.5)
 
 
@@ -275,9 +306,9 @@ func _part(e, p: int, req: Dictionary) -> Dictionary:
 func _best_part_slot(e, p: int, pt: String) -> Dictionary:
 	var best := {}
 	var bv := 0.05
-	for s in D.SHIP_TYPES:
+	for s in e.ps[p]["types"]:
 		for i in e.ps[p]["bp"][s].size():
-			if s == "sb" and int(D.PARTS[pt].get("mv", 0)) > 0:
+			if (s == "sb" or s == "orb") and int(D.PARTS[pt].get("mv", 0)) > 0:
 				continue
 			if not e.bp_valid_with(p, s, i, pt):
 				continue
@@ -305,21 +336,22 @@ func _tech_value(e, p: int, t: String) -> float:
 						c += 1
 			v = c * 2.2 + 0.5
 		"quantum_grid":
-			v = 5.0
+			v = (5.5 if r >= 3 else 3.5) if r <= 6 else 2.0
 		"advanced_robotics":
-			v = 4.0
+			# il disco in più si ripaga quasi subito: la tecnologia più consigliata all'inizio
+			v = 7.0 if r <= 5 else (3.0 if r <= 7 else 1.0)
 		"nanorobots":
-			v = 1.5
+			v = (2.5 if e.prod(p, "m") >= 6 else 1.0) if r <= 6 else 0.6
 		"orbital":
-			v = 2.5 if r <= 6 else 1.0
+			v = (2.0 if r <= 5 else 0.6) + (1.5 if e.ps[p]["S"].get("orb_ships", false) else 0.0)
 		"monolith":
-			v = 4.5 if r >= 4 else 2.5
+			v = 4.5 if r >= 3 and r <= 7 else 2.0
 		"starbase":
-			v = 1.5
+			v = 1.5 if _threatened(e, p) else 0.8
 		"neutron_bombs":
-			v = 1.0
+			v = 2.5 if r >= 3 else 1.5
 		"wormhole_generator":
-			v = 2.0
+			v = 1.5 if r >= 4 and r <= 6 else 0.6
 		"artifact_key":
 			var c := 0
 			for hx in e.controls(p):
@@ -335,14 +367,27 @@ func _tech_value(e, p: int, t: String) -> float:
 		_:
 			if T["kind"] == "part":
 				v = _part_tech_value(e, p, t)
+				# armi e corazze che i giocatori esperti prendono presto
+				if t in ["improved_hull", "plasma_cannon", "positron_computer"] and r <= 5:
+					v += 1.8
+				elif t in ["fusion_source", "gauss_shield"] and r <= 4:
+					v += 0.6
 	# punti dei tracciati
 	var cat: String = T["cat"]
 	if cat == "rare":
 		cat = e._best_track_for_rare(p)
 	var k: int = e.ps[p]["techs"][cat].size()
-	v += (D.TECH_VP[min(7, k + 1)] - D.TECH_VP[min(7, k)]) * 1.0
-	v += 0.4 * float(D.TECH_DISCOUNT[min(6, k + 1)] - D.TECH_DISCOUNT[min(6, k)])
-	if r >= 7:
+	v += (D.TECH_VP[min(7, k + 1)] - D.TECH_VP[min(7, k)]) * (1.4 if r >= 6 else 1.0)
+	v += float(D.TECH_DISCOUNT[min(6, k + 1)] - D.TECH_DISCOUNT[min(6, k)]) * max(0.0, (6 - r) * 0.18)
+	# meglio concentrarsi su uno o due tracciati che spargere la ricerca
+	if level >= 1 and ab.find("c") < 0:
+		var tracks := []
+		for c2 in D.TECH_CATS:
+			tracks.append(e.ps[p]["techs"][c2].size())
+		tracks.sort()
+		if k >= tracks[1] and k > 0:
+			v += 0.4 * min(k, 4)
+	if r >= 7 and T["kind"] != "instant":
 		v *= 0.6
 	return v
 
@@ -352,7 +397,7 @@ func _part_tech_value(e, p: int, t: String) -> float:
 	for pt in D.PARTS:
 		if D.PARTS[pt].get("tech", "") != t:
 			continue
-		for s in ["int", "cru", "dre", "sb"]:
+		for s in e.ps[p]["types"]:
 			var n_ships: int = max(1, e.count_ships(p, s))
 			for i in e.ps[p]["bp"][s].size():
 				var old: String = e.ps[p]["bp"][s][i]
@@ -369,13 +414,22 @@ func _value_research(e, p: int) -> float:
 	var opts: Array = e.research_opts(p)
 	var best := 0.0
 	var sci: int = int(e.ps[p]["res"]["s"])
+	var n_act: int = int(e.ps[p]["S"]["acts"]["res"])
+	var vals := []
 	for o in opts:
 		var v := _tech_value(e, p, o["t"])
 		var cost: int = int(o["cost"])
 		if cost > sci:
-			v -= (cost - sci) * 0.7
-		v = v * 1.4 - cost * 0.18
-		best = max(best, v)
+			v -= (cost - sci) * 0.6
+		v = v * 1.5 - cost * 0.12
+		vals.append(v)
+	vals.sort()
+	vals.reverse()
+	for i in min(n_act, vals.size()):
+		best += max(0.0, vals[i]) * (1.0 if i == 0 else 0.6)
+	# scienza che resterebbe inutilizzata
+	if sci >= 10:
+		best += 1.0
 	return best
 
 
@@ -387,8 +441,8 @@ func _research(e, p: int, req: Dictionary) -> Dictionary:
 		var v := _tech_value(e, p, o["t"])
 		var cost: int = int(o["cost"])
 		if cost > sci:
-			v -= (cost - sci) * 0.8
-		v = v * 1.4 - cost * 0.18 + rng.randf() * 0.3
+			v -= (cost - sci) * 0.7
+		v = v * 1.5 - cost * 0.12 + rng.randf() * (0.6 if level == 0 else 0.2)
 		if v > bv:
 			bv = v
 			best = o["t"]
@@ -488,11 +542,16 @@ func _value_build(e, p: int) -> float:
 		v = 3.5 + (want_fleet - fleet) * 0.4
 	for o in opts:
 		if o["w"] == "mono":
-			v = max(v, 6.5 if e.round_n >= 4 else 4.0)
+			v = max(v, 7.5 if e.round_n >= 3 else 4.5)
 		elif o["w"] == "orb":
-			v = max(v, 3.0 if e.round_n <= 6 else 1.0)
+			var spare := 0
+			for t in ["s", "$"]:
+				spare += int(e.ps[p]["track"][t])
+			v = max(v, (3.5 if e.round_n <= 6 else 1.0) if spare > 2 else 0.5)
 	if m >= 14:
 		v += 1.5
+	if e.round_n == 8 and m >= 3:
+		v += 1.0
 	return v
 
 
@@ -507,15 +566,18 @@ func _build(e, p: int, req: Dictionary) -> Dictionary:
 		var v := 0.0
 		match w:
 			"mono":
-				v = 5.0 if e.round_n >= 3 else 2.0
+				v = 6.0 if e.round_n >= 3 else 3.0
 			"orb":
-				v = 2.4 if e.round_n <= 6 else 0.5
+				v = 2.6 if e.round_n <= 6 else 0.5
 			"sb":
 				v = _ship_value(e.ship_stats(p, "sb")) / cost * 4.0 * (1.5 if _threatened(e, p) else 0.5)
 			_:
 				v = _ship_value(e.ship_stats(p, w)) / cost * 6.0
+				# le corazzate sono le più efficienti in azioni (costruire e muovere)
 				if w == "dre":
-					v *= 1.15
+					v *= 1.35 if level >= 1 and ab.find("h") < 0 else 1.15
+				elif w == "cru":
+					v *= 1.15 if level >= 1 and ab.find("h") < 0 else 1.0
 		# vicino all'obiettivo o in casa
 		var hx: Dictionary = e.hexes[o["h"]]
 		if not target.is_empty() and w in ["int", "cru", "dre"]:
@@ -606,7 +668,7 @@ func _defenders(e, p: int, hk: String) -> Array:
 
 ## Obiettivo d'attacco raggiungibile con buone probabilità: {h, ships: [id], p}
 func _attack_target(e, p: int, loose := false) -> Dictionary:
-	var thr: float = [0.8, 0.72, 0.66][level]
+	var thr: float = [0.8, 0.72, 0.66][level] if ab.find("d") < 0 else 0.8
 	if loose:
 		thr -= 0.25
 	var mine := []
@@ -643,9 +705,17 @@ func _attack_target(e, p: int, loose := false) -> Dictionary:
 		if ids.is_empty() or att.is_empty():
 			continue
 		var pw := _sim(att, dfn, 40)
-		if pw < thr:
+		var players_here := false
+		for s in e.ships_in(k):
+			if int(s["p"]) != p:
+				players_here = true
+		var t2 := thr if players_here or int(hx["owner"]) >= 0 else thr - 0.06
+		if pw < t2:
 			continue
 		var gain := _sector_value(e, p, int(hx["n"])) + 1.5 * dfn.size()
+		# le prime battaglie danno reputazione migliore
+		if e.round_n <= 5:
+			gain += 1.0
 		if int(hx["owner"]) >= 0 and int(hx["owner"]) != p:
 			gain += 2.0
 		var v := gain * pw
@@ -813,3 +883,102 @@ func _colony(e, p: int, req: Dictionary) -> Dictionary:
 	if best.is_empty():
 		return {"stop": true}
 	return best
+
+
+# ================================================================ espansioni
+
+func _hole(e, p: int, req: Dictionary) -> Dictionary:
+	var best: String = req["opts"][0]
+	var bv := -99.0
+	for k in req["opts"]:
+		var hx: Dictionary = e.hexes[k]
+		var v := 0.0
+		if int(hx["owner"]) == p:
+			v += 3.0
+		for s in e.ships_in(k):
+			v += 1.0 if int(s["p"]) == p else -2.0
+		v -= hx["npc"].size() * 2.0
+		if v > bv:
+			bv = v
+			best = k
+	return {"h": best}
+
+
+func _shrine(e, p: int, req: Dictionary) -> Dictionary:
+	var best := {}
+	var bv := -99.0
+	var placed: Array = e.ps[p]["shrines"]
+	for o in req["opts"]:
+		var i := int(o["i"])
+		var cost: int = int(D.SHRINES[i][1])
+		var row := int(i / 3)
+		var in_row := 0
+		for j in 3:
+			if placed.has(row * 3 + j):
+				in_row += 1
+		var v := 2.2 - cost * 0.35 + in_row * 0.8 + rng.randf() * 0.1
+		if v > bv:
+			bv = v
+			best = o
+	if best.is_empty() or bv < 0.0:
+		return {"stop": true}
+	return {"i": best["i"], "h": best["h"], "pl": best["pl"]}
+
+
+## Specie minore che conviene prendere ora (o "").
+func _minor_pick(e, p: int, req: Dictionary) -> String:
+	var opts: Array = req.get("minors", [])
+	if opts.is_empty():
+		return ""
+	var st: Dictionary = e.ps[p]
+	var best := ""
+	var bv := 0.0
+	for m in opts:
+		var cost: int = int(D.MINORS[m]["cost"])
+		var after: float = float(int(st["res"]["$"]) - cost + e.prod(p, "$") - e.upkeep_next(p))
+		if after < 0:
+			continue
+		var v := 1.0
+		match m:
+			"wealth":
+				v = 3.0
+			"rep":
+				v = float(st["rep"].size()) * 0.7 + 0.5
+			"diplo":
+				v = float(st["rep"].size()) * 0.6 + 1.0
+			"prod":
+				v = 1.0 + (8 - e.round_n) * 0.9
+			"res":
+				v = 1.0 + (8 - e.round_n) * 0.5
+			"cru", "dre", "orb", "mono":
+				v = 1.0 + (8 - e.round_n) * 0.25
+		v = v * 2.0 - cost * 0.45 + (1.5 if e.round_n >= 7 else 0.0)
+		if v > bv:
+			bv = v
+			best = m
+	return best
+
+
+## Pulsar: attivazione gratuita se serve a qualcosa.
+func _pulsar_pick(e, p: int, req: Dictionary) -> Dictionary:
+	for k in req.get("pulsars", []):
+		var cur: String = str(e.hexes[k].get("pulsar", "mov"))
+		var best := ""
+		var bv := 2.0
+		for a in D.PULSAR_ACTS:
+			if a == cur:
+				continue
+			var v := 0.0
+			match a:
+				"upg":
+					v = _value_upgrade(e, p)
+				"bui":
+					v = _value_build(e, p)
+				"mov":
+					v = _value_move(e, p)
+			if v > bv:
+				bv = v
+				best = a
+		if best != "":
+			return {"a": "pulsar", "h": k, "act": best}
+	return {}

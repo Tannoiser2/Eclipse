@@ -47,7 +47,8 @@ func _run(np: int, w: int, h: int, sp: String) -> void:
 		elif col == 0:
 			col = 5
 		seats.append({"name": "Stefano" if i == 0 else "", "ai": i != 0, "level": 1, "color": col, "species": s})
-	main.start_game({"seats": seats, "ai_delay": 0.0, "anim": 6.0, "seed": 11})
+	var ex := OS.get_environment("EC_EXP") == "1"
+	main.start_game({"seats": seats, "ai_delay": 0.0, "anim": 6.0, "seed": 11, "events": ex, "minors": ex, "turn_order": ex})
 	var g = main.current
 	await create_timer(1.5).timeout
 	await _snap("inizio")

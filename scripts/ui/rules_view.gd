@@ -46,6 +46,13 @@ Reputazione, ambasciatori (1 PV), settori controllati (1-4 PV), monoliti nei tuo
 [b]Mechanema[/b]: costruiscono a prezzo ridotto e fanno tre attivazioni per Potenziare e Costruire.
 [b]Egemonia di Orione[/b]: partono con un incrociatore, iniziativa ed energia in più e scudi di Gauss già montati.
 
+[font_size=26][color=#ffd27e]Espansioni (si attivano nel menu)[/color][/font_size]
+[b]Specie delle espansioni[/b]: Esiliati, Sindacato di Rho Indi, Custodi di Magellano e Illuminati di Lyra si scelgono con qualunque colore, nel menu accanto alle due facce della plancia. Le loro regole speciali sono riassunte sulla plancia laterale.
+[b]Eventi galattici[/b]: nel sacchetto dei settori entrano nebulose, pulsar, buchi neri e supernove. Il pulsar dà un disco su un'azione: una volta per round chi controlla il settore può spostarlo e fare quell'azione senza usare un disco. Le navi che entrano in un buco nero spariscono e riemergono più avanti in un settore a scelta; se non escono entro il round vanno perse. A fine round ogni supernova tira due dadi (contano solo i valori da 2 a 5) e aggiunge la tecnologia più avanzata di chi la controlla: se il totale è minore del numero del round esplode, i pianeti spariscono e le navi che ci si trovano vengono distrutte.
+[b]Specie minori[/b]: durante il proprio turno si paga denaro per allearsi con una specie minore; il suo ambasciatore occupa una casella della reputazione e l'effetto vale subito.
+[b]Ordine dei turni, variante[/b]: nel round successivo gioca per primo chi ha passato per primo, poi gli altri nell'ordine in cui hanno passato.
+La Pyxis Unity non c'è: la sua trasmateria e le Lune della morte richiederebbero un gioco a parte.
+
 [font_size=26][color=#ffd27e]Note sulla versione digitale[/color][/font_size]
 I dadi colpiti si assegnano da soli nel modo migliore (prima si distruggono le navi più grandi possibili). Delle tessere reputazione pescate si tiene automaticamente la migliore. Quando non si riesce a pagare il mantenimento il gioco scambia e, se serve, abbandona i settori meno preziosi. Il modulo base comprende i Portali di curvatura; i progetti avanzati di Antichi, Guardiani e SDCG si scelgono nel menu.
 """

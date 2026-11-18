@@ -27,11 +27,11 @@ const DISC_TOTAL := 16
 const TECH_DISCOUNT := [0, 1, 2, 3, 4, 6, 8]
 const TECH_VP := [0, 0, 0, 0, 1, 2, 3, 5]
 const SHIP_LIMIT := {"int": 8, "cru": 4, "dre": 2, "sb": 4}
-const SHIP_NAME := {"int": "Intercettore", "cru": "Incrociatore", "dre": "Corazzata", "sb": "Base stellare"}
-const SHIP_PLURAL := {"int": "Intercettori", "cru": "Incrociatori", "dre": "Corazzate", "sb": "Basi stellari"}
+const SHIP_NAME := {"int": "Intercettore", "cru": "Incrociatore", "dre": "Corazzata", "sb": "Base stellare", "orb": "Orbitale"}
+const SHIP_PLURAL := {"int": "Intercettori", "cru": "Incrociatori", "dre": "Corazzate", "sb": "Basi stellari", "orb": "Orbitali"}
 const SHIP_TYPES := ["int", "cru", "dre", "sb"]
-const SHIP_REP := {"int": 1, "cru": 2, "dre": 3, "sb": 1, "anc": 1, "gua": 2, "gcds": 3}
-const SHIP_SIZE := {"int": 1, "sb": 2, "cru": 3, "dre": 4, "anc": 2, "gua": 3, "gcds": 5}
+const SHIP_REP := {"int": 1, "cru": 2, "dre": 3, "sb": 1, "orb": 1, "anc": 1, "gua": 2, "gcds": 3}
+const SHIP_SIZE := {"int": 1, "sb": 2, "orb": 2, "cru": 3, "dre": 4, "anc": 2, "gua": 3, "gcds": 5}
 const REP_BAG := {1: 12, 2: 10, 3: 7, 4: 4}
 
 const ACTIONS := ["exp", "res", "upg", "bui", "mov", "inf"]
@@ -112,6 +112,19 @@ const SECTORS := {
 	230: {"name": "Lambda Aurigae", "ring": 2, "vp": 3, "wh": [1, 1, 0, 1, 1, 0], "pl": ["$*", "$", "s", "m*"], "art": true, "home": true},
 	231: {"name": "Delta Pavonis", "ring": 2, "vp": 3, "wh": [1, 1, 0, 1, 1, 0], "pl": ["$*", "$", "s*", "s", "m"], "art": true, "home": true},
 	232: {"name": "Rigel", "ring": 2, "vp": 3, "wh": [1, 1, 0, 1, 1, 0], "pl": ["$*", "s", "m*", "m"], "art": true, "home": true},
+	233: {"name": "47 Ursae Majoris", "ring": 2, "vp": 3, "wh": [1, 1, 0, 1, 1, 0], "pl": ["$*", "s*", "s", "m"], "art": true, "home": true},
+	234: {"name": "Eta Geminorum", "ring": 2, "vp": 3, "wh": [1, 1, 0, 1, 1, 0], "pl": ["$*", "m*", "m"], "art": true, "home": true},
+	236: {"name": "Rho Indi", "ring": 2, "vp": 0, "wh": [1, 1, 0, 1, 1, 0], "pl": ["$*", "$", "s*", "m"], "art": true, "home": true},
+	238: {"name": "Beta Lyrae", "ring": 2, "vp": 3, "wh": [1, 1, 0, 1, 1, 0], "pl": ["$", "s*", "s", "m"], "art": true, "home": true},
+	# eventi galattici
+	295: {"name": "NGC 5189", "ring": 2, "vp": 0, "wh": [1, 1, 1, 1, 1, 1], "pl": [], "disc": true, "disc_extra": 1, "anc": 1, "nebula": true},
+	395: {"name": "NGC 1952", "ring": 3, "vp": 0, "wh": [1, 1, 1, 1, 1, 1], "pl": [], "disc": true, "disc_extra": 1, "anc": 1, "nebula": true},
+	393: {"name": "Geminga", "ring": 3, "vp": 1, "wh": [1, 1, 0, 1, 0, 0], "pl": ["s"], "pulsar": true},
+	394: {"name": "Simeis 147", "ring": 3, "vp": 1, "wh": [1, 0, 0, 1, 0, 1], "pl": ["m"], "pulsar": true},
+	396: {"name": "Cygnus X-1", "ring": 3, "vp": 0, "wh": [0, 1, 1, 0, 1, 1], "pl": [], "disc": true, "hole": "inner"},
+	399: {"name": "V616 Mon", "ring": 3, "vp": 0, "wh": [0, 1, 1, 0, 1, 1], "pl": [], "disc": true, "hole": "edge"},
+	397: {"name": "Betelgeuse", "ring": 3, "vp": 0, "wh": [1, 1, 0, 1, 0, 0], "pl": ["g", "g", "s", "$*", "m*"], "supernova": true},
+	398: {"name": "Deneb", "ring": 3, "vp": 0, "wh": [1, 0, 0, 1, 0, 1], "pl": ["m*", "$*", "s", "g", "g"], "supernova": true},
 	# settori dei Guardiani (nelle zone di partenza libere)
 	271: {"name": "Omega Fornacis", "ring": 2, "vp": 2, "wh": [1, 1, 0, 1, 1, 0], "pl": ["m*", "$", "s"], "disc": true, "art": true, "npc": "gua"},
 	272: {"name": "Sigma Hydrae", "ring": 2, "vp": 2, "wh": [1, 1, 0, 1, 1, 0], "pl": ["$", "s*", "m"], "disc": true, "art": true, "npc": "gua"},
@@ -122,6 +135,30 @@ const STACK_I := [101, 102, 103, 104, 105, 106, 107, 108, 109, 110]
 const STACK_II := [201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 214, 281]
 const STACK_III := [301, 302, 303, 304, 305, 306, 307, 308, 309, 310, 311, 312, 313, 314, 315, 316, 317, 318, 381, 382]
 const GUARDIANS := [271, 272, 273, 274]
+const EVENTS_II := [295]
+const EVENTS_III := [395, 393, 394, 397, 398]
+const BLACK_HOLES := [396, 399]
+const EXPLODED := {"name": "Supernova esplosa", "ring": 3, "vp": 0, "wh": [0, 0, 0, 0, 0, 0], "pl": [], "exploded": true}
+const PULSAR_ACTS := ["mov", "upg", "bui"]
+
+# ------------------------------------------------------------------ specie minori
+const MINORS := {
+	"rep": {"name": "Reputazione", "cost": 8, "txt": "1 PV per tessera reputazione a fine partita."},
+	"diplo": {"name": "Diplomazia", "cost": 4, "txt": "1 PV per tessera ambasciatore (compresa questa) a fine partita."},
+	"wealth": {"name": "Ricchezza", "cost": 8, "txt": "3 PV a fine partita."},
+	"prod": {"name": "Produzione", "cost": 9, "txt": "Metti subito su questa tessera un cubetto popolazione dal tracciato che vuoi. 1 PV."},
+	"cru": {"name": "Incrociatori", "cost": 4, "txt": "Gli incrociatori costano 1 materiale in meno. 1 PV."},
+	"dre": {"name": "Corazzate", "cost": 4, "txt": "Le corazzate costano 2 materiali in meno. 1 PV."},
+	"orb": {"name": "Orbitali", "cost": 4, "txt": "Gli orbitali costano 1 materiale in meno. 1 PV."},
+	"mono": {"name": "Monoliti", "cost": 6, "txt": "I monoliti costano 2 materiali in meno. 1 PV."},
+	"res": {"name": "Ricerca", "cost": 4, "txt": "Le tecnologie costano 1 scienza in meno (non sotto il minimo). 1 PV."},
+}
+const MINOR_DISC := {"cru": 1, "dre": 2, "orb": 1, "mono": 2}
+
+# ------------------------------------------------------------------ santuari (Illuminati di Lyra)
+## Tre file da tre: [risorsa, costo]. Completata una fila si ottiene il premio.
+const SHRINES := [["s", 2], ["$", 3], ["m", 4], ["m", 3], ["s", 4], ["$", 5], ["$", 4], ["m", 5], ["s", 6]]
+const SHRINE_ROW := ["Capacità del Generatore di wormhole", "Una tessera scoperta", "Un disco influenza in più"]
 
 # ------------------------------------------------------------------ parti delle navi
 ## en: energia (+ prodotta, - consumata); comp: computer; sh: scudi; hull: scafo; mv: movimento;
@@ -172,6 +209,8 @@ const PARTS := {
 	"axion_computer": {"name": "Computer ad assioni", "en": 0, "comp": 2, "ini": 1, "anc": true, "img": "e02ee2a3"},
 	"conformal_drive": {"name": "Propulsore conforme", "en": -2, "mv": 4, "ini": 2, "anc": true, "img": "e1393b64"},
 	"ion_missile": {"name": "Missile ionico", "en": 0, "mis": ["y", "y", "y"], "anc": true, "img": "f2ca3094"},
+	# parte stampata sul progetto dell'orbitale degli Esuli
+	"orbital_turret": {"name": "Torretta ionica", "en": -1, "can": ["y", "y"], "fixed": true, "img": "139838af"},
 }
 const DIE_DMG := {"y": 1, "o": 2, "b": 3, "r": 4}
 const DIE_NAME := {"y": "ionico", "o": "al plasma", "b": "a solitoni", "r": "ad antimateria", "x": "a squarcio"}
@@ -297,6 +336,17 @@ const BP_PLANTA := {
 	"dre": ["nuclear_source", "ion_cannon", "ion_cannon", "", "hull", "hull", "nuclear_drive"],
 	"sb": ["electron_computer", "ion_cannon", "hull", "hull"],
 }
+const BP_EXILES := {
+	"int": ["nuclear_source", "ion_cannon", "nuclear_drive", "electron_computer"],
+	"cru": ["electron_computer", "ion_cannon", "electron_computer", "nuclear_source", "hull", "nuclear_drive"],
+	"dre": ["electron_computer", "ion_cannon", "ion_cannon", "electron_computer", "nuclear_source", "hull", "hull", "nuclear_drive"],
+	"orb": ["hull", "orbital_turret", "electron_computer"],
+}
+const BP_RHO := {
+	"int": ["nuclear_source", "ion_cannon", "nuclear_drive", ""],
+	"cru": ["electron_computer", "ion_cannon", "", "nuclear_source", "hull", "nuclear_drive"],
+	"sb": ["electron_computer", "", "ion_cannon", "hull", "hull"],
+}
 const COST_STD := {"int": 3, "cru": 5, "dre": 8, "sb": 3, "orb": 4, "mono": 10}
 const TERRAN := {"name": "Terrestri", "res": {"m": 4, "s": 3, "$": 3}, "colony": 3, "trade": 2, "techs": ["starbase"],
 	"acts": {"exp": 1, "res": 1, "upg": 2, "bui": 2, "mov": 3, "inf": 2}, "rep": ["A", "X", "X", "X", "X"],
@@ -337,7 +387,29 @@ const SPECIES := {
 		"rep": ["X", "X", "X", "X", "X"], "ini": {"int": 3, "cru": 2, "dre": 1, "sb": 5}, "bp": "orion",
 		"bonus": {"int": {"en": 1}, "cru": {"en": 2}, "dre": {"en": 3}, "sb": {"en": 3}}, "start_cruiser": true,
 		"txt": "Inizia con un incrociatore invece dell'intercettore. Iniziativa ed energia in più, scudi di Gauss già montati."},
+	# espansioni
+	"exiles": {"faction": "Gli Esuli", "home": 234, "res": {"m": 4, "s": 2, "$": 3}, "colony": 3, "trade": 3, "exp": true,
+		"techs": ["orbital", "cloaking_device"], "acts": {"exp": 1, "res": 1, "upg": 2, "bui": 2, "mov": 2, "inf": 2},
+		"rep": ["X", "X", "X", "X"], "ini": {"int": 2, "cru": 1, "dre": 0, "orb": 0}, "bp": "exiles", "types": ["int", "cru", "dre", "orb"],
+		"bonus": {"orb": {"en": 4, "hull": 2}}, "cost": {"int": 3, "cru": 5, "dre": 8, "orb": 5, "mono": 10}, "start_orbital": true, "orb_ships": true,
+		"txt": "Iniziano con un orbitale. Gli orbitali con un loro cubetto sono navi (progetto proprio, senza propulsori): se distrutti il cubetto va al cimitero, l'orbitale resta. 1 PV per orbitale con il loro cubetto. Niente basi stellari."},
+	"rho": {"faction": "Sindacato di Rho Indi", "home": 236, "res": {"m": 3, "s": 3, "$": 2}, "colony": 2, "trade": 3, "exp": true,
+		"trade_rates": {"m": [3, 1], "s": [3, 1], "$": [3, 2]},
+		"techs": ["starbase", "gauss_shield"], "acts": {"exp": 1, "res": 1, "upg": 2, "bui": 2, "mov": 4, "inf": 2},
+		"rep": ["A", "A", "X", "X", "X"], "amb": 2, "ini": {"int": 3, "cru": 2, "sb": 3}, "bp": "rho", "types": ["int", "cru", "sb"],
+		"outside": {"int": ["gauss_shield"], "cru": ["gauss_shield"], "sb": ["gauss_shield"]}, "bonus": {"sb": {"en": 3}},
+		"cost": {"int": 4, "cru": 6, "sb": 4, "orb": 4, "mono": 10}, "start_ints": 2, "rep_money": true, "traitor_free": true,
+		"txt": "Iniziano con due intercettori. Quattro movimenti per azione. Dopo aver pescato reputazione ricevono denaro pari alle tessere pescate meno 1. Il Traditore non toglie loro punti. Solo due ambasciatori, niente corazzate, costruzioni più care, scudi di Gauss in più, commercio 3:1 (denaro 3:2)."},
+	"magellan": {"faction": "Custodi di Magellano", "home": 233, "res": {"m": 3, "s": 2, "$": 2}, "colony": 3, "trade": 3, "exp": true,
+		"techs": ["fusion_source"], "acts": {"exp": 1, "res": 1, "upg": 2, "bui": 2, "mov": 2, "inf": 2}, "inf_flip": 1,
+		"rep": ["X", "X", "X", "X"], "ini": {"int": 2, "cru": 1, "dre": 0, "sb": 4}, "bonus": {"sb": {"en": 3}}, "tech_disc": true, "vp_part": true, "colony_res": true,
+		"txt": "Una tessera scoperta sotto i tracciati, che si risolve alla quarta tecnologia di un tracciato. 1 PV per ogni scoperta usata come parte di nave. Possono girare le navi coloniali inutilizzate per ricevere una risorsa a scelta ciascuna. Influenzare rigira una sola nave coloniale."},
+	"lyra": {"faction": "Illuminati di Lyra", "home": 238, "res": {"m": 3, "s": 4, "$": 2}, "colony": 3, "trade": 3, "exp": true,
+		"techs": ["fusion_source"], "acts": {"exp": 1, "res": 1, "upg": 2, "bui": 2, "mov": 2, "inf": 2},
+		"rep": ["X", "X", "X", "X"], "ini": {"int": 2, "cru": 1, "dre": 0, "sb": 4}, "bonus": {"sb": {"en": 3}}, "shrines": true, "reroll": true,
+		"txt": "Nove santuari: a ogni Ricerca ne possono piazzare uno accanto a un pianeta del colore giusto (o grigio) in un loro settore, pagandone il costo; ogni fila completata dà un premio. 1 PV per santuario nei settori che controllano. In battaglia possono girare navi coloniali inutilizzate per ritirare i propri dadi mancati."},
 }
+const EXP_SPECIES := ["exiles", "rho", "magellan", "lyra"]
 
 
 ## Dati completi di una specie (le fazioni terrestri condividono la plancia terrestre).
@@ -352,7 +424,14 @@ static func species(id: String) -> Dictionary:
 	if not s.has("cost"):
 		s["cost"] = COST_STD.duplicate()
 	var bp_kind: String = s.get("bp", "std")
-	s["bp_base"] = (BP_ORION if bp_kind == "orion" else (BP_PLANTA if bp_kind == "planta" else BP_STD)).duplicate(true)
+	var bps := {"orion": BP_ORION, "planta": BP_PLANTA, "exiles": BP_EXILES, "rho": BP_RHO}
+	s["bp_base"] = bps.get(bp_kind, BP_STD).duplicate(true)
+	if not s.has("types"):
+		s["types"] = SHIP_TYPES.duplicate()
+	if not s.has("trade_rates"):
+		s["trade_rates"] = {"m": [int(s["trade"]), 1], "s": [int(s["trade"]), 1], "$": [int(s["trade"]), 1]}
+	if not s.has("outside"):
+		s["outside"] = {}
 	return s
 
 

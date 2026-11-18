@@ -21,8 +21,11 @@ func _run() -> void:
 	root.add_child(main)
 	await _wait(0.5)
 	var seats := [{"name": "Io", "ai": false, "level": 1, "color": 0, "species": "terran_directorate"},
-		{"name": "", "ai": true, "level": 1, "color": 1, "species": "hydran"}, {"name": "", "ai": true, "level": 2, "color": 2, "species": "planta"}]
-	main.start_game({"seats": seats, "ai_delay": 0.0, "anim": 0.0, "seed": 77})
+		{"name": "", "ai": true, "level": 1, "color": 1, "species": "hydran"}, {"name": "", "ai": true, "level": 2, "color": 2, "species": "lyra"}]
+	var ex := OS.get_environment("EC_EXP") == "1"
+	if ex:
+		seats[0]["species"] = "magellan"
+	main.start_game({"seats": seats, "ai_delay": 0.0, "anim": 0.0, "seed": 77, "events": ex, "minors": ex, "turn_order": ex})
 	var g = main.current
 	await _play_until(g, 3)
 	var fp1: String = g.engine.fingerprint()

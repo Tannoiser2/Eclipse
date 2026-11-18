@@ -43,6 +43,13 @@ var abort := false
 var rng := RandomNumberGenerator.new()
 var n := 0
 var adv_npc := false             # progetti avanzati di Antichi, Guardiani e SDCG
+var events := false              # eventi galattici (pulsar, supernove, buchi neri, nebulose)
+var minors_on := false           # specie minori
+var turn_var := false            # variante: ordine di turno secondo l'ordine in cui si è passato
+var minors: Array = []           # specie minori ancora disponibili
+var turn_order: Array = []       # ordine di turno (variante)
+var pass_order: Array = []
+var pulsar_used := {}            # settore -> true se usato in questo round
 var npc_var := {"anc": 0, "gua": 0, "gcds": 0}
 var replay: Array = []
 var replay_i := 0
@@ -80,6 +87,9 @@ func setup(cfg: Dictionary) -> void:
 	players = cfg.get("seats", [])
 	n = players.size()
 	adv_npc = bool(cfg.get("adv_npc", false))
+	events = bool(cfg.get("events", false))
+	minors_on = bool(cfg.get("minors", false))
+	turn_var = bool(cfg.get("turn_order", false))
 	if cfg.has("seed"):
 		rng.seed = int(cfg["seed"])
 	else:
@@ -93,10 +103,21 @@ func setup(cfg: Dictionary) -> void:
 			npc_var[k] = 1 + rng.randi_range(0, 1)
 	# pile dei settori
 	stacks[1] = _shuffled(D.STACK_I.duplicate())
-	stacks[2] = _shuffled(D.STACK_II.duplicate())
+	var mid: Array = D.STACK_II.duplicate()
+	if events:
+		mid.append_array(D.EVENTS_II)
+	stacks[2] = _shuffled(mid)
 	var outer: Array = _shuffled(D.STACK_III.duplicate())
 	outer.resize(D.OUTER_COUNT[clampi(n, 2, 6)] if n >= 2 else 5)
+	if events:
+		# gli eventi si aggiungono agli esterni (non contano nel numero)
+		outer.append_array(D.EVENTS_III)
+		outer.append(D.BLACK_HOLES[rng.randi_range(0, 1)])
+		outer = _shuffled(outer)
 	stacks[3] = outer
+	if minors_on:
+		minors = _shuffled(D.MINORS.keys())
+		minors.resize(4)
 	# scoperte
 	disc_bag.clear()
 	for t in D.DISCOVERIES:
@@ -139,11 +160,19 @@ func setup(cfg: Dictionary) -> void:
 			"techs": {"mil": [], "grid": [], "nano": []},
 			"bp": {"int": [], "cru": [], "dre": [], "sb": []}, "outside": {"int": [], "cru": [], "dre": [], "sb": []},
 			"spare": [], "rep": [], "disc_vp": 0, "passed": false, "acts_used": {}, "reacts": 0,
-			"eliminated": false, "amb_left": 3, "warp_tile": "", "kills": 0,
+			"eliminated": false, "amb_left": int(S.get("amb", 3)), "warp_tile": "", "kills": 0,
+			"types": S["types"].duplicate(), "minors": [], "shrines": [], "tech_disc": {}, "anc_used": 0, "wg_ability": false,
 		}
+		for s2 in S["types"]:
+			st["outside"][s2] = S["outside"].get(s2, []).duplicate()
+			if not st["bp"].has(s2):
+				st["bp"][s2] = []
 		for t in S["techs"]:
-			st["techs"][D.TECHS[t]["cat"]].append(t)
-		for s in D.SHIP_TYPES:
+			var tc: String = D.TECHS[t]["cat"]
+			st["techs"]["mil" if tc == "rare" else tc].append(t)
+			rare_row.erase(t)
+			tech_bag.erase(t)
+		for s in S["types"]:
 			var b: Array = S["bp_base"][s]
 			var o := []
 			for i in b.size():
@@ -172,6 +201,12 @@ func setup(cfg: Dictionary) -> void:
 			hx["cubes"][i] = tt
 			st["track"][tt] -= 1
 		_add_ship(p, "cru" if S.get("start_cruiser", false) else "int", D.key(pos))
+		for i in int(S.get("start_ints", 1)) - 1:
+			_add_ship(p, "int", D.key(pos))
+		if S.get("start_orbital", false):
+			hx["orb"] = true
+		if S.get("tech_disc", false):
+			st["tech_disc"] = _draw_disc()
 		for i in int(S.get("start_rep", 0)):
 			_rep_offer(p, [_draw_rep()], false)
 	# Guardiani nelle zone di partenza libere (non con 6 giocatori)
@@ -183,6 +218,7 @@ func setup(cfg: Dictionary) -> void:
 			var pos: Vector2i = D.DIRS[slot] * 2
 			hexes[D.key(pos)] = _new_hex(pos, int(gs.pop_back()), _rot_facing_center(pos))
 	start_player = 0
+	turn_order = range(n)
 	round_n = 1
 	phase = "action"
 	for p in n:
@@ -218,6 +254,13 @@ func _new_hex(pos: Vector2i, num: int, rot: int) -> Dictionary:
 		"orb": false, "orb_cube": "", "mono": false, "disc": {}, "npc": [], "warp_tile": -1, "anc_portal": false, "entry": []}
 	if S.get("disc", false):
 		hx["disc"] = _draw_disc()
+	hx["disc_more"] = []
+	for i in int(S.get("disc_extra", 0)):
+		hx["disc_more"].append(_draw_disc())
+	hx["orb_unit"] = {"dmg": 0}
+	hx["shrines"] = []
+	if S.get("pulsar", false):
+		hx["pulsar"] = "mov"
 	for i in int(S.get("anc", 0)):
 		hx["npc"].append({"k": "anc", "dmg": 0})
 	if S.has("npc"):
@@ -312,6 +355,8 @@ func hex_at(k: String) -> Dictionary:
 
 
 func sector(hx: Dictionary) -> Dictionary:
+	if hx.get("exploded", false):
+		return D.EXPLODED
 	return D.SECTORS[int(hx["n"])]
 
 
@@ -342,7 +387,7 @@ func connected(a: Dictionary, b: Dictionary, p: int = -1, diplo := false) -> boo
 		var w2 := wh(b, (d + 3) % 6)
 		if w1 and w2:
 			return true
-		if not diplo and p >= 0 and (w1 or w2) and has_tech(p, "wormhole_generator"):
+		if not diplo and p >= 0 and (w1 or w2) and wg(p):
 			return true
 	if is_warp(a) and is_warp(b) and a["k"] != b["k"]:
 		return true
@@ -485,13 +530,22 @@ func trade_rate(p: int) -> int:
 	return int(ps[p]["S"]["trade"])
 
 
+## Scambio da una risorsa: [quante se ne pagano, quante se ne ricevono].
+func trade_pair(p: int, from: String) -> Array:
+	return ps[p]["S"]["trade_rates"].get(from, [trade_rate(p), 1])
+
+
+func wg(p: int) -> bool:
+	return has_tech(p, "wormhole_generator") or bool(ps[p].get("wg_ability", false))
+
+
 ## Quanto di r si può ottenere in tutto, scambiando le altre risorse.
 func spendable(p: int, r: String) -> int:
 	var t: int = int(ps[p]["res"][r])
-	var rate := trade_rate(p)
 	for o in D.RES:
 		if o != r:
-			t += int(int(ps[p]["res"][o]) / rate)
+			var tp := trade_pair(p, o)
+			t += int(int(ps[p]["res"][o]) / int(tp[0])) * int(tp[1])
 	return t
 
 
@@ -504,17 +558,17 @@ func pay(p: int, r: String, amount: int) -> bool:
 	if not can_pay(p, r, amount):
 		return false
 	var res: Dictionary = ps[p]["res"]
-	var rate := trade_rate(p)
 	while int(res[r]) < amount:
 		var best := ""
 		for o in D.RES:
-			if o != r and int(res[o]) >= rate and (best == "" or int(res[o]) > int(res[best])):
+			if o != r and int(res[o]) >= int(trade_pair(p, o)[0]) and (best == "" or int(res[o]) > int(res[best])):
 				best = o
 		if best == "":
 			return false
-		res[best] = int(res[best]) - rate
-		res[r] = int(res[r]) + 1
-		log_msg("%s scambia %d %s per 1 %s." % [pname(p), rate, D.RES_NAME[best].to_lower(), D.RES_NAME[r].to_lower()])
+		var tp := trade_pair(p, best)
+		res[best] = int(res[best]) - int(tp[0])
+		res[r] = int(res[r]) + int(tp[1])
+		log_msg("%s scambia %d %s per %d %s." % [pname(p), int(tp[0]), D.RES_NAME[best].to_lower(), int(tp[1]), D.RES_NAME[r].to_lower()])
 	res[r] = int(res[r]) - amount
 	return true
 
@@ -586,6 +640,7 @@ func ship_stats(p: int, s: String) -> Dictionary:
 	var bonus: Dictionary = S.get("bonus", {}).get(s, {})
 	st["en_p"] += int(bonus.get("en", 0))
 	st["comp"] += int(bonus.get("comp", 0))
+	st["hull"] += int(bonus.get("hull", 0))
 	var parts := []
 	for i in ps[p]["bp"][s].size():
 		var pt := part_at(p, s, i)
@@ -612,7 +667,7 @@ func ship_stats(p: int, s: String) -> Dictionary:
 			st["can"].append(d)
 		for d in P.get("mis", []):
 			st["mis"].append(d)
-	if s == "sb":
+	if s == "sb" or s == "orb":
 		st["mv"] = 0
 	return st
 
@@ -631,7 +686,7 @@ func bp_valid_with(p: int, s: String, i: int, pt: String) -> bool:
 	ps[p]["bp"][s][i] = old
 	if st["en_u"] > st["en_p"]:
 		return false
-	if s == "sb":
+	if s == "sb" or s == "orb":
 		return st["drives"] == 0
 	return st["drives"] >= 1
 
@@ -654,13 +709,15 @@ func parts_available(p: int) -> Array:
 func upgrade_opts(p: int) -> Array:
 	var out := []
 	var avail := parts_available(p)
-	for s in D.SHIP_TYPES:
+	for s in ps[p]["types"]:
 		for i in ps[p]["bp"][s].size():
 			var cur := part_at(p, s, i)
+			if cur != "" and D.PARTS[cur].get("fixed", false):
+				continue
 			for pt in avail:
 				if pt == cur:
 					continue
-				if s == "sb" and int(D.PARTS[pt].get("mv", 0)) > 0:
+				if (s == "sb" or s == "orb") and int(D.PARTS[pt].get("mv", 0)) > 0:
 					continue
 				if bp_valid_with(p, s, i, pt):
 					out.append({"s": s, "i": i, "part": pt})
@@ -674,6 +731,7 @@ func _apply_part(p: int, s: String, i: int, pt: String) -> void:
 	ps[p]["bp"][s][i] = pt
 	if D.PARTS[pt].get("anc", false):
 		ps[p]["spare"].erase(pt)
+		ps[p]["anc_used"] = int(ps[p]["anc_used"]) + 1
 
 
 # ---------------------------------------------------------------- tecnologie
@@ -686,7 +744,8 @@ func tech_cost(p: int, t: String, cat := "") -> int:
 	var k: int = ps[p]["techs"][c].size()
 	if k >= 7:
 		return 999
-	return max(int(T["min"]), int(T["cost"]) - D.TECH_DISCOUNT[k])
+	var minor := 1 if ps[p]["minors"].has("res") else 0
+	return max(int(T["min"]), int(T["cost"]) - D.TECH_DISCOUNT[k] - minor)
 
 
 func _best_track_for_rare(p: int) -> String:
@@ -730,6 +789,26 @@ func _gain_tech(p: int, t: String, cat := "") -> void:
 		if int(tray[t]) <= 0:
 			tray.erase(t)
 	ps[p]["techs"][c].append(t)
+	if ps[p]["techs"][c].size() >= 4 and not ps[p]["tech_disc"].is_empty():
+		ps[p]["tech_disc_ready"] = true
+
+
+## Custodi di Magellano: la scoperta sotto i tracciati si risolve alla quarta tecnologia.
+func _check_tech_disc(p: int) -> void:
+	if not ps[p].get("tech_disc_ready", false):
+		return
+	ps[p]["tech_disc_ready"] = false
+	var tile: Dictionary = ps[p]["tech_disc"]
+	ps[p]["tech_disc"] = {}
+	log_msg("%s risolve la scoperta dei Custodi." % pname(p))
+	await _discovery(p, tile, home_of(p))
+
+
+func home_of(p: int) -> String:
+	for hx in controls(p):
+		if sector(hx).get("home", false):
+			return hx["k"]
+	return ""
 
 
 # ================================================================ partita
@@ -757,7 +836,7 @@ func run() -> void:
 		if round_n == D.ROUNDS:
 			break
 		phase = "cleanup"
-		_cleanup()
+		await _cleanup()
 		round_n += 1
 		changed.emit()
 	_finish()
@@ -773,9 +852,17 @@ func alive_players() -> Array:
 
 func _action_phase() -> void:
 	first_pass = -1
+	pass_order = []
+	pulsar_used = {}
 	for p in n:
 		ps[p]["passed"] = ps[p]["eliminated"]
-	var cur := start_player
+	var order: Array = []
+	if turn_var:
+		order = turn_order.duplicate()
+	else:
+		for i in n:
+			order.append((start_player + i) % n)
+	var idx := 0
 	var guard := 0
 	while not abort:
 		var all_passed := true
@@ -784,11 +871,13 @@ func _action_phase() -> void:
 				all_passed = false
 		if all_passed:
 			break
+		var cur: int = order[idx % order.size()]
 		if not ps[cur]["eliminated"]:
+			await _hole_returns(cur)
 			await _turn(cur)
-		cur = (cur + 1) % n
+		idx += 1
 		guard += 1
-		if guard > 400:
+		if guard > 500:
 			break
 
 
@@ -825,12 +914,36 @@ func _turn(p: int) -> void:
 	while not abort:
 		var opts := turn_opts(p)
 		var req := {"type": "turn", "passed": ps[p]["passed"], "opts": opts, "colony": not colony_opts(p).is_empty(),
-			"diplo": diplo_targets(p), "trade": trade_rate(p)}
+			"diplo": diplo_targets(p), "trade": trade_rate(p), "pulsars": pulsar_opts(p), "minors": minor_opts(p),
+			"colony_res": ps[p]["S"].get("colony_res", false) and int(ps[p]["colony_used"]) < int(ps[p]["colony"])}
 		var r: Dictionary = await decide(p, req)
 		var a: String = r.get("a", "pass")
-		if free > 40 and a in ["colony", "trade", "diplo"]:
+		if free > 40 and a in ["colony", "trade", "diplo", "minor", "colony_res"]:
 			a = "pass"
 		match a:
+			"pulsar":
+				var pk := str(r.get("h", ""))
+				var pa := str(r.get("act", ""))
+				if pulsar_opts(p).has(pk) and pa in D.PULSAR_ACTS and pa != str(hexes[pk].get("pulsar", "mov")):
+					await _pulsar(p, pk, pa)
+					_aggression_check(p)
+					changed.emit()
+					return
+				continue
+			"minor":
+				free += 1
+				_take_minor(p, str(r.get("m", "")))
+				changed.emit()
+				continue
+			"colony_res":
+				free += 1
+				var cr := str(r.get("r", "$"))
+				if D.RES.has(cr) and int(ps[p]["colony_used"]) < int(ps[p]["colony"]):
+					ps[p]["colony_used"] = int(ps[p]["colony_used"]) + 1
+					ps[p]["res"][cr] = int(ps[p]["res"][cr]) + 1
+					log_msg("%s gira una nave coloniale: +1 %s." % [pname(p), D.RES_NAME[cr].to_lower()])
+				changed.emit()
+				continue
 			"colony":
 				free += 1
 				await _colony(p, false)
@@ -849,6 +962,7 @@ func _turn(p: int) -> void:
 			"pass":
 				if not ps[p]["passed"]:
 					ps[p]["passed"] = true
+					pass_order.append(p)
 					if first_pass < 0:
 						first_pass = p
 						ps[p]["res"]["$"] = int(ps[p]["res"]["$"]) + 2
@@ -861,6 +975,7 @@ func _turn(p: int) -> void:
 			# scelta non valida: si passa
 			if not ps[p]["passed"]:
 				ps[p]["passed"] = true
+				pass_order.append(p)
 				if first_pass < 0:
 					first_pass = p
 					ps[p]["res"]["$"] = int(ps[p]["res"]["$"]) + 2
@@ -888,6 +1003,8 @@ func _turn(p: int) -> void:
 					await _explore(p, int(acts["exp"]))
 				"res":
 					await _research(p, int(acts["res"]))
+					if ps[p]["S"].get("shrines", false):
+						await _shrine(p)
 				"upg":
 					await _upgrade(p, int(acts["upg"]) + (2 if has_tech(p, "pico_modulator") else 0))
 				"bui":
@@ -904,21 +1021,21 @@ func _turn(p: int) -> void:
 func _trade(p: int, from: String, to: String, amount: int) -> void:
 	if from == to or not D.RES.has(from) or not D.RES.has(to) or amount <= 0:
 		return
-	var rate := trade_rate(p)
+	var tp := trade_pair(p, from)
 	var res: Dictionary = ps[p]["res"]
-	amount = min(amount, int(int(res[from]) / rate))
+	amount = min(amount, int(int(res[from]) / int(tp[0])))
 	if amount <= 0:
 		return
-	res[from] = int(res[from]) - amount * rate
-	res[to] = int(res[to]) + amount
-	log_msg("%s scambia %d %s per %d %s." % [pname(p), amount * rate, D.RES_NAME[from].to_lower(), amount, D.RES_NAME[to].to_lower()])
+	res[from] = int(res[from]) - amount * int(tp[0])
+	res[to] = int(res[to]) + amount * int(tp[1])
+	log_msg("%s scambia %d %s per %d %s." % [pname(p), amount * int(tp[0]), D.RES_NAME[from].to_lower(), amount * int(tp[1]), D.RES_NAME[to].to_lower()])
 
 
 # ---------------------------------------------------------------- esplorazione
 
 func explore_zones(p: int) -> Array:
 	var out := []
-	var wg := has_tech(p, "wormhole_generator")
+	var wgen := wg(p)
 	for k in hexes:
 		var hx: Dictionary = hexes[k]
 		if not (int(hx["owner"]) == p or (not ships_in(k, p).is_empty() and unpinned(k, p))):
@@ -930,7 +1047,7 @@ func explore_zones(p: int) -> Array:
 				continue
 			if D.dist(z) > D.MAX_DIST:
 				continue
-			if not wh(hx, d) and not wg:
+			if not wh(hx, d) and not wgen:
 				continue
 			var ring := D.ring_of(z)
 			if stacks[ring].is_empty() and discards[ring].is_empty():
@@ -943,7 +1060,7 @@ func explore_zones(p: int) -> Array:
 func place_rots(p: int, num: int, zk: String) -> Array:
 	var out := []
 	var z := D.unkey(zk)
-	var wg := has_tech(p, "wormhole_generator")
+	var wgen := wg(p)
 	var w: Array = D.SECTORS[num]["wh"]
 	for rot in 6:
 		var ok := false
@@ -956,7 +1073,7 @@ func place_rots(p: int, num: int, zk: String) -> Array:
 				continue
 			var mine := int(w[(d - rot + 6) % 6]) == 1
 			var theirs := wh(hx, (d + 3) % 6)
-			if mine and (theirs or wg):
+			if mine and (theirs or wgen):
 				ok = true
 				break
 		if ok:
@@ -1011,8 +1128,9 @@ func _explore(p: int, count: int) -> void:
 		fx.emit("place", {"p": p, "h": zk})
 		changed.emit()
 		await _pace(0.5)
-		var friendly := not npc_blocks(hx, p)
-		if not hx["disc"].is_empty() and hx["npc"].is_empty():
+		var friendly: bool = not npc_blocks(hx, p) and not sector(hx).get("nebula", false) and not sector(hx).has("hole")
+		var later: bool = sector(hx).get("nebula", false) or sector(hx).has("hole")
+		if not hx["disc"].is_empty() and hx["npc"].is_empty() and not later:
 			var tile: Dictionary = hx["disc"]
 			hx["disc"] = {}
 			await _discovery(p, tile, zk)
@@ -1038,6 +1156,12 @@ func _discovery(p: int, tile: Dictionary, hk: String) -> void:
 		return
 	var res: Dictionary = ps[p]["res"]
 	var hx: Dictionary = hexes.get(hk, {})
+	if not hx.is_empty() and sector(hx).get("nebula", false) and str(tile["k"]) in ["orbital", "monolith"]:
+		# orbitali e monoliti non vanno nelle nebulose: si pesca un'altra tessera
+		var t2 := _draw_disc()
+		if not t2.is_empty():
+			await _discovery(p, t2, hk)
+			return
 	match str(tile["k"]):
 		"mat6":
 			res["m"] = int(res["m"]) + 6
@@ -1061,6 +1185,7 @@ func _discovery(p: int, tile: Dictionary, hk: String) -> void:
 			if best != "":
 				_gain_tech(p, best)
 				await _tech_instant(p, best)
+				await _check_tech_disc(p)
 				log_msg("%s ottiene la tecnologia %s." % [pname(p), D.tech_name(best)])
 			else:
 				ps[p]["disc_vp"] = int(ps[p]["disc_vp"]) + 1
@@ -1084,16 +1209,23 @@ func _discovery(p: int, tile: Dictionary, hk: String) -> void:
 		"part":
 			var pt: String = tile["part"]
 			if D.PARTS[pt].get("outside", false):
-				var r2: Dictionary = await decide(p, {"type": "part", "part": pt, "opts": [["int", -1], ["cru", -1], ["dre", -1], ["sb", -1]]})
-				var s: String = r2.get("s", "dre")
-				if not D.SHIP_TYPES.has(s):
-					s = "dre"
+				var oo := []
+				for t2 in ps[p]["types"]:
+					oo.append([t2, -1])
+				var r2: Dictionary = await decide(p, {"type": "part", "part": pt, "opts": oo})
+				var s: String = r2.get("s", "")
+				if not ps[p]["types"].has(s):
+					s = ps[p]["types"][0]
 				ps[p]["outside"][s].append(pt)
+				ps[p]["anc_used"] = int(ps[p]["anc_used"]) + 1
 			else:
 				var opts := []
-				for s in D.SHIP_TYPES:
+				for s in ps[p]["types"]:
 					for i in ps[p]["bp"][s].size():
-						if s == "sb" and int(D.PARTS[pt].get("mv", 0)) > 0:
+						if (s == "sb" or s == "orb") and int(D.PARTS[pt].get("mv", 0)) > 0:
+							continue
+						var cur := part_at(p, s, i)
+						if cur != "" and D.PARTS[cur].get("fixed", false):
 							continue
 						if bp_valid_with(p, s, i, pt):
 							opts.append([s, i])
@@ -1140,6 +1272,7 @@ func _research(p: int, count: int) -> void:
 		log_msg("%s ricerca %s (%d scienza)." % [pname(p), D.tech_name(t), cost])
 		fx.emit("tech", {"p": p, "t": t})
 		await _tech_instant(p, t)
+		await _check_tech_disc(p)
 		changed.emit()
 		await _pace(0.3)
 
@@ -1211,13 +1344,20 @@ func _upgrade(p: int, count: int) -> void:
 # ---------------------------------------------------------------- costruzione
 
 func build_cost(p: int, w: String) -> int:
-	return int(ps[p]["S"]["cost"][w])
+	var c: int = int(ps[p]["S"]["cost"].get(w, 99))
+	if ps[p]["minors"].has(w):
+		c -= int(D.MINOR_DISC.get(w, 0))
+	return max(1, c)
 
 
 func build_opts(p: int) -> Array:
 	var out := []
 	var mine := controls(p)
 	for w in ["int", "cru", "dre", "sb", "orb", "mono"]:
+		if not ps[p]["S"]["cost"].has(w):
+			continue
+		if w in D.SHIP_TYPES and not ps[p]["types"].has(w):
+			continue
 		if not can_pay(p, "m", build_cost(p, w)):
 			continue
 		if D.SHIP_LIMIT.has(w) and count_ships(p, w) >= int(D.SHIP_LIMIT[w]):
@@ -1280,7 +1420,7 @@ func ship_dests(s: Dictionary) -> Dictionary:
 	if mv <= 0 or s["t"] == "sb":
 		return out
 	var start: String = s["h"]
-	if not unpinned(start, p):
+	if not hexes.has(start) or not unpinned(start, p):
 		return out
 	var frontier := [[start, [start]]]
 	var seen := {start: true}
@@ -1302,7 +1442,8 @@ func ship_dests(s: Dictionary) -> Dictionary:
 				var path: Array = f[1].duplicate()
 				path.append(nb["k"])
 				out[nb["k"]] = path
-				nxt.append([nb["k"], path])
+				if not sector(nb).has("hole"):
+					nxt.append([nb["k"], path])
 		frontier = nxt
 	return out
 
@@ -1340,6 +1481,8 @@ func _move(p: int, count: int) -> void:
 		fx.emit("move", {"p": p, "id": int(id), "path": path})
 		changed.emit()
 		await _pace(0.5)
+		if sector(hexes[to]).has("hole"):
+			await _enter_hole(p, s, to)
 
 
 # ---------------------------------------------------------------- influenza
@@ -1348,7 +1491,7 @@ func influence_targets(p: int) -> Array:
 	var out := []
 	for k in hexes:
 		var hx: Dictionary = hexes[k]
-		if int(hx["owner"]) >= 0 or npc_blocks(hx, p):
+		if int(hx["owner"]) >= 0 or npc_blocks(hx, p) or sector(hx).get("nebula", false) or sector(hx).has("hole"):
 			continue
 		var owners := owners_in(k)
 		var foes := false
@@ -1369,7 +1512,7 @@ func influence_targets(p: int) -> Array:
 
 func _influence(p: int, count: int) -> void:
 	var before := int(ps[p]["colony_used"])
-	ps[p]["colony_used"] = max(0, before - 2)
+	ps[p]["colony_used"] = max(0, before - int(ps[p]["S"].get("inf_flip", 2)))
 	if before > 0:
 		log_msg("%s rigira %d navi coloniali." % [pname(p), before - int(ps[p]["colony_used"])])
 	var touched := {}
@@ -1526,6 +1669,8 @@ func _hostile_presence(p: int, q: int) -> bool:
 	for s in ships:
 		if int(s["p"]) != p:
 			continue
+		if not hexes.has(s["h"]):
+			continue
 		var hx: Dictionary = hexes[s["h"]]
 		if int(hx["owner"]) == q or not ships_in(s["h"], q).is_empty():
 			return true
@@ -1581,6 +1726,8 @@ func _aggression_check(p: int) -> void:
 		var aggr := false
 		for s in ships:
 			if int(s["p"]) != p:
+				continue
+			if not hexes.has(s["h"]):
 				continue
 			var hx: Dictionary = hexes[s["h"]]
 			if int(hx["owner"]) == q or not ships_in(s["h"], q).is_empty():
@@ -1663,6 +1810,9 @@ func _sides_in(k: String) -> Array:
 	for p in owners_in(k):
 		if not order.has(p):
 			order.append(p)
+	var ob := orb_ship(k)
+	if ob >= 0 and not order.has(ob):
+		order.append(ob)
 	var own: int = int(hx["owner"])
 	if order.has(own):
 		order.erase(own)
@@ -1753,6 +1903,9 @@ func _resolve_sector(k: String) -> void:
 		for i in cnt:
 			drawn.append(_draw_rep())
 		_rep_offer(p, drawn)
+		if ps[p]["S"].get("rep_money", false) and cnt > 1:
+			ps[p]["res"]["$"] = int(ps[p]["res"]["$"]) + cnt - 1
+			log_msg("%s incassa %d denaro dalla reputazione." % [pname(p), cnt - 1])
 	_leave_check(k)
 	battle = {}
 	fx.emit("battle_end", {"h": k})
@@ -1768,6 +1921,8 @@ func _units(k: String, side: int, p: int) -> Array:
 			if s.get("ret_done", false):
 				continue
 			out.append({"side": side, "p": p, "t": s["t"], "ref": s, "st": ship_stats(p, s["t"])})
+		if orb_ship(k) == p:
+			out.append({"side": side, "p": p, "t": "orb", "ref": hexes[k]["orb_unit"], "st": ship_stats(p, "orb")})
 	else:
 		for npc in hexes[k]["npc"]:
 			out.append({"side": side, "p": -1, "t": npc["k"], "ref": npc, "st": npc_stats(npc["k"])})
@@ -1861,7 +2016,7 @@ func _battle(k: String, att: int, dfn: int, kills: Dictionary, retreat_all: Dict
 			for u in live:
 				if int(u["st"]["regen"]) > 0 and int(u["ref"]["dmg"]) > 0:
 					u["ref"]["dmg"] = max(0, int(u["ref"]["dmg"]) - int(u["st"]["regen"]))
-			if g["p"] >= 0:
+			if g["p"] >= 0 and not (g["t"] in ["sb", "orb"]):
 				var dests := retreat_dests(k, int(g["p"]))
 				if not dests.is_empty():
 					var foe := 1 - int(g["side"])
@@ -1896,8 +2051,16 @@ func _battle(k: String, att: int, dfn: int, kills: Dictionary, retreat_all: Dict
 					u["ref"]["h"] = g["ret_to"]
 					u["ref"]["ret_done"] = true
 					_enter(int(g["p"]), g["ret_to"])
-	# rimozione delle navi distrutte
+	# rimozione delle navi distrutte (un orbitale degli Esuli resta: il cubetto va al cimitero)
 	for u in units:
+		if u["t"] == "orb" and u["p"] >= 0:
+			if int(u["ref"]["dmg"]) > int(u["st"]["hull"]):
+				var hxo: Dictionary = hexes[k]
+				if hxo["orb_cube"] != "":
+					_return_cube(int(u["p"]), hxo["orb_cube"], true)
+					hxo["orb_cube"] = ""
+			u["ref"]["dmg"] = 0
+			continue
 		if int(u["ref"]["dmg"]) > int(u["st"]["hull"]):
 			if u["p"] >= 0:
 				ships.erase(u["ref"])
@@ -1943,6 +2106,23 @@ func _volley(k: String, g: Dictionary, dice: Array, units: Array, kills: Diction
 		else:
 			e["dmg"] = int(D.DIE_DMG[d["d"]])
 		rolls.append(e)
+	# Illuminati di Lyra: una nave coloniale inutilizzata per ritirare un dado mancato
+	var gp: int = int(g["p"])
+	if gp >= 0 and ps[gp]["S"].get("reroll", false):
+		var min_sh := 99
+		for u in foes:
+			min_sh = min(min_sh, int(u["st"]["sh"]))
+		for e in rolls:
+			if int(ps[gp]["colony_used"]) >= int(ps[gp]["colony"]):
+				break
+			if e["d"] == "x":
+				continue
+			var v: int = int(e["v"])
+			if v == 6 or (v > 1 and v + int(e["comp"]) - min_sh >= 6):
+				continue
+			ps[gp]["colony_used"] = int(ps[gp]["colony_used"]) + 1
+			e["v"] = _roll()
+			log_msg("%s gira una nave coloniale e ritira un dado." % pname(gp))
 	_assign(rolls, foes)
 	var shown := []
 	for e in rolls:
@@ -2159,6 +2339,20 @@ func _claim_discoveries() -> void:
 	keys.sort_custom(func(a, b): return int(hexes[a]["n"]) > int(hexes[b]["n"]))
 	for k in keys:
 		var hx: Dictionary = hexes[k]
+		if sector(hx).get("nebula", false) and hx["npc"].is_empty():
+			var here2 := owners_in(k)
+			if here2.size() == 1:
+				var tiles := []
+				if not hx["disc"].is_empty():
+					tiles.append(hx["disc"])
+				for t3 in hx["disc_more"]:
+					if not t3.is_empty():
+						tiles.append(t3)
+				hx["disc"] = {}
+				hx["disc_more"] = []
+				for t3 in tiles:
+					await _discovery(int(here2[0]), t3, k)
+			continue
 		if hx["disc"].is_empty() or not hx["npc"].is_empty():
 			continue
 		var here := owners_in(k)
@@ -2203,14 +2397,14 @@ func _upkeep_phase() -> void:
 		while int(res["$"]) + net < 0 and guard < 30:
 			guard += 1
 			# si scambiano le altre risorse
-			var rate := trade_rate(p)
 			var from := ""
 			for o in ["s", "m"]:
-				if int(res[o]) >= rate and (from == "" or int(res[o]) > int(res[from])):
+				if int(res[o]) >= int(trade_pair(p, o)[0]) and (from == "" or int(res[o]) > int(res[from])):
 					from = o
 			if from != "":
-				res[from] = int(res[from]) - rate
-				res["$"] = int(res["$"]) + 1
+				var tp := trade_pair(p, from)
+				res[from] = int(res[from]) - int(tp[0])
+				res["$"] = int(res["$"]) + int(tp[1])
 				continue
 			# si abbandonano i settori meno preziosi
 			var worst = null
@@ -2243,6 +2437,7 @@ func _upkeep_phase() -> void:
 
 
 func _cleanup() -> void:
+	await _supernovae()
 	_draw_techs(D.TECH_ROUND[clampi(n, 2, 6)] if n >= 2 else 4)
 	for p in n:
 		var st: Dictionary = ps[p]
@@ -2261,6 +2456,17 @@ func _cleanup() -> void:
 		st["passed"] = false
 	if first_pass >= 0:
 		start_player = first_pass
+	if turn_var:
+		var order: Array = pass_order.duplicate()
+		for p in turn_order:
+			if not order.has(p):
+				order.append(p)
+		turn_order = order
+	# navi perse nel buco nero (non rientrate nel loro round)
+	for s2 in ships.duplicate():
+		if s2["h"] == "hole" and int(s2.get("hole_round", 0)) <= round_n:
+			ships.erase(s2)
+			log_msg("Una nave di %s si perde nello spaziotempo." % pname(int(s2["p"])))
 
 
 # ================================================================ punteggio
@@ -2282,7 +2488,7 @@ func score(p: int) -> Dictionary:
 		if hx["mono"]:
 			s["monoliti"] += 3
 	s["scoperte"] = int(st["disc_vp"]) * 2
-	if traitor == p:
+	if traitor == p and not st["S"].get("traitor_free", false):
 		s["traditore"] = -2
 	for c in D.TECH_CATS:
 		s["tecnologie"] += D.TECH_VP[min(7, st["techs"][c].size())]
@@ -2293,6 +2499,32 @@ func score(p: int) -> Dictionary:
 			for npc in hexes[k]["npc"]:
 				if npc["k"] == "anc":
 					s["specie"] += 1
+	if st["S"].get("orb_ships", false):
+		for k in hexes:
+			var hx: Dictionary = hexes[k]
+			if hx["orb"] and hx["orb_cube"] != "" and int(hx["owner"]) == p:
+				s["specie"] += 1
+	if st["S"].get("vp_part", false):
+		s["specie"] += int(st["anc_used"])
+	if st["S"].get("shrines", false):
+		for hx in controls(p):
+			s["specie"] += hx["shrines"].size()
+	# specie minori (1 PV come ambasciatori, già contati, più i loro premi)
+	var reps := 0
+	var ambs := 0
+	for e in st["rep"]:
+		if e["k"] == "R":
+			reps += 1
+		else:
+			ambs += 1
+	for m in st["minors"]:
+		match m:
+			"diplo":
+				s["amb"] += ambs - 1
+			"wealth":
+				s["amb"] += 2
+			"rep":
+				s["amb"] += reps - 1
 	var tot := 0
 	for v in s.values():
 		tot += int(v)
@@ -2352,3 +2584,238 @@ func fingerprint() -> String:
 	for s in ships:
 		parts.append([s["id"], s["p"], s["t"], s["h"]])
 	return str(var_to_str(parts).hash())
+
+
+
+# ================================================================ espansioni
+
+## Orbitale degli Esuli che combatte come nave: proprietario, oppure -1.
+func orb_ship(k: String) -> int:
+	var hx: Dictionary = hexes.get(k, {})
+	if hx.is_empty() or not hx["orb"] or hx["orb_cube"] == "":
+		return -1
+	var o: int = int(hx["owner"])
+	if o >= 0 and ps[o]["S"].get("orb_ships", false):
+		return o
+	return -1
+
+
+# ---------------------------------------------------------------- pulsar
+
+func pulsar_opts(p: int) -> Array:
+	var out := []
+	if not events or ps[p]["passed"]:
+		return out
+	for hx in controls(p):
+		if sector(hx).get("pulsar", false) and not pulsar_used.has(hx["k"]):
+			out.append(hx["k"])
+	return out
+
+
+## Pulsar: il disco si sposta su un'altra azione del settore e se ne fa un'attivazione (al posto dell'azione).
+func _pulsar(p: int, k: String, act: String) -> void:
+	var hx: Dictionary = hexes[k]
+	hx["pulsar"] = act
+	pulsar_used[k] = true
+	log_msg("%s attiva il pulsar di %s: %s." % [pname(p), sector(hx)["name"], D.ACTION_NAME[act]])
+	fx.emit("action", {"p": p, "a": act, "react": false})
+	match act:
+		"upg":
+			await _upgrade(p, 1)
+		"bui":
+			await _build(p, 1)
+		"mov":
+			await _move(p, 1)
+
+
+# ---------------------------------------------------------------- buchi neri
+
+func _enter_hole(p: int, s: Dictionary, k: String) -> void:
+	var hx: Dictionary = hexes[k]
+	if not hx["disc"].is_empty():
+		var tile: Dictionary = hx["disc"]
+		hx["disc"] = {}
+		await _discovery(p, tile, home_of(p))
+	var v := _roll()
+	s["hole_from"] = k
+	if v == 1 or v == 6:
+		s["dmg"] = int(s["dmg"]) + 1
+		s["h"] = "hole"
+		s["hole_round"] = round_n
+		log_msg("%s: la nave attraversa il buco nero e torna subito, danneggiata." % pname(p))
+		await _hole_return(p, s, true)
+	else:
+		s["h"] = "hole"
+		s["hole_round"] = round_n + (1 if v <= 3 else 2)
+		log_msg("%s: la nave sparisce nel buco nero e tornerà nel round %d." % [pname(p), int(s["hole_round"])])
+	_leave_check(k)
+	changed.emit()
+
+
+func hole_dests(s: Dictionary) -> Array:
+	var kind: String = D.SECTORS[int(hexes[s["hole_from"]]["n"])].get("hole", "inner")
+	var out := []
+	for k in hexes:
+		var hx: Dictionary = hexes[k]
+		if sector(hx).has("hole"):
+			continue
+		if kind == "inner":
+			if D.ring_of(hx["pos"]) == 1:
+				out.append(k)
+		else:
+			for d in 6:
+				if wh(hx, d) and not hexes.has(D.key(hx["pos"] + D.DIRS[d])):
+					out.append(k)
+					break
+	return out
+
+
+func _hole_return(p: int, s: Dictionary, forced: bool) -> void:
+	var dests := hole_dests(s)
+	if dests.is_empty():
+		ships.erase(s)
+		return
+	var r: Dictionary = await decide(p, {"type": "hole", "opts": dests, "forced": forced, "t": s["t"]})
+	var to: String = str(r.get("h", ""))
+	if not dests.has(to):
+		if forced:
+			to = dests[0]
+		else:
+			return
+	s["h"] = to
+	s.erase("hole_round")
+	_enter(p, to)
+	log_msg("%s: %s riemerge in %s." % [pname(p), D.SHIP_NAME[s["t"]], sector(hexes[to])["name"]])
+	fx.emit("place", {"p": p, "h": to})
+	changed.emit()
+
+
+## All'inizio del turno: navi che possono uscire dal buco nero in questo round.
+func _hole_returns(p: int) -> void:
+	for s in ships.duplicate():
+		if int(s["p"]) == p and s["h"] == "hole" and int(s.get("hole_round", 0)) == round_n:
+			await _hole_return(p, s, false)
+
+
+# ---------------------------------------------------------------- supernove
+
+func _supernovae() -> void:
+	for k in hexes.keys():
+		var hx: Dictionary = hexes[k]
+		if hx.get("exploded", false) or not D.SECTORS[int(hx["n"])].get("supernova", false):
+			continue
+		var tot := 0
+		for i in 2:
+			var v := _roll()
+			if v >= 2 and v <= 5:
+				tot += v
+		var o: int = int(hx["owner"])
+		if o >= 0:
+			var best := 0
+			for c in D.TECH_CATS:
+				best = max(best, ps[o]["techs"][c].size())
+			tot += best
+		if tot >= round_n:
+			log_msg("La supernova di %s resta stabile (%d)." % [sector(hx)["name"], tot])
+			continue
+		if o >= 0:
+			_remove_disc(hx)
+		for s in ships.duplicate():
+			if s["h"] == k:
+				ships.erase(s)
+		hx["npc"] = []
+		hx["orb"] = false
+		hx["mono"] = false
+		hx["disc"] = {}
+		hx["exploded"] = true
+		hx["cubes"] = []
+		log_msg("La supernova di %s esplode!" % D.SECTORS[int(hx["n"])]["name"])
+		fx.emit("supernova", {"h": k})
+		changed.emit()
+		await _pace(0.6)
+
+
+# ---------------------------------------------------------------- specie minori
+
+func minor_opts(p: int) -> Array:
+	var out := []
+	if not minors_on or not amb_room(p):
+		return out
+	for m in minors:
+		if int(ps[p]["res"]["$"]) >= int(D.MINORS[m]["cost"]):
+			out.append(m)
+	return out
+
+
+func _take_minor(p: int, m: String) -> void:
+	if not minor_opts(p).has(m):
+		return
+	ps[p]["res"]["$"] = int(ps[p]["res"]["$"]) - int(D.MINORS[m]["cost"])
+	minors.erase(m)
+	ps[p]["minors"].append(m)
+	var e := {"k": "A", "from": -1, "minor": m}
+	if m == "prod":
+		var t := _best_cube_track(p)
+		if t != "":
+			ps[p]["track"][t] = int(ps[p]["track"][t]) - 1
+			e["t"] = t
+	ps[p]["rep"].append(e)
+	log_msg("%s stringe relazioni con la specie minore %s." % [pname(p), D.MINORS[m]["name"]])
+	fx.emit("minor", {"p": p, "m": m})
+
+
+# ---------------------------------------------------------------- santuari di Lyra
+
+func shrine_opts(p: int) -> Array:
+	var out := []
+	var placed: Array = ps[p]["shrines"]
+	for i in D.SHRINES.size():
+		if placed.has(i):
+			continue
+		var r: String = D.SHRINES[i][0]
+		var cost: int = int(D.SHRINES[i][1])
+		if not can_pay(p, r, cost):
+			continue
+		for hx in controls(p):
+			var pl: Array = sector(hx)["pl"]
+			for j in pl.size():
+				var base: String = str(pl[j]).replace("*", "")
+				if (base == r or base == "g") and not hx["shrines"].has(j):
+					out.append({"i": i, "h": hx["k"], "pl": j})
+	return out
+
+
+func _shrine(p: int) -> void:
+	var opts := shrine_opts(p)
+	if opts.is_empty():
+		return
+	var r: Dictionary = await decide(p, {"type": "shrine", "opts": opts})
+	var ok := false
+	for o in opts:
+		if int(o["i"]) == int(r.get("i", -1)) and o["h"] == r.get("h", "") and int(o["pl"]) == int(r.get("pl", -1)):
+			ok = true
+	if not ok:
+		return
+	var i := int(r["i"])
+	pay(p, D.SHRINES[i][0], int(D.SHRINES[i][1]))
+	ps[p]["shrines"].append(i)
+	hexes[r["h"]]["shrines"].append(int(r["pl"]))
+	log_msg("%s costruisce un santuario in %s." % [pname(p), sector(hexes[r["h"]])["name"]])
+	fx.emit("shrine", {"p": p, "h": r["h"]})
+	# fila completata
+	var row := int(i / 3)
+	var full := true
+	for j in 3:
+		if not ps[p]["shrines"].has(row * 3 + j):
+			full = false
+	if full:
+		log_msg("%s completa una fila di santuari: %s." % [pname(p), D.SHRINE_ROW[row]])
+		match row:
+			0:
+				ps[p]["wg_ability"] = true
+			1:
+				await _discovery(p, _draw_disc(), home_of(p))
+			2:
+				ps[p]["discs"] = int(ps[p]["discs"]) + 1
+				ps[p]["disc_total"] = int(ps[p]["disc_total"]) + 1
+	changed.emit()

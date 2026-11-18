@@ -306,6 +306,11 @@ func refresh() -> void:
 			var tw := create_tween()
 			tw.tween_property(mi, "scale", Vector3.ONE, 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	for k in tile_nodes.keys():
+		if e.hexes.has(k) and e.hexes[k].get("exploded", false) and not tile_nodes[k].has_meta("exploded"):
+			tile_nodes[k].set_meta("exploded", true)
+			var mx := StandardMaterial3D.new()
+			mx.albedo_texture = UI.tex("res://assets/settori/%d_esplosa.jpg" % int(e.hexes[k]["n"]))
+			tile_nodes[k].set_surface_override_material(0, mx)
 		if not e.hexes.has(k):
 			tile_nodes[k].queue_free()
 			tile_nodes.erase(k)
@@ -341,6 +346,17 @@ func _refresh_pieces() -> void:
 			cube.material_override = _mat("cube", UI.pcolor(e, int(hx["owner"])), 0.1, 0.55)
 			cube.position = base + img_to_local(pos[i], rot) + Vector3(0, 0.045, 0)
 			pieces.add_child(cube)
+		# santuari di Lyra (accanto ai pianeti)
+		for j in hx.get("shrines", []):
+			if j >= pos.size():
+				continue
+			var sh := MeshInstance3D.new()
+			var sm := PrismMesh.new()
+			sm.size = Vector3(0.08, 0.12, 0.08)
+			sh.mesh = sm
+			sh.material_override = _mat("shrine", Color("#f2d27e"), 0.8, 0.3, Color("#f2a93b") * 0.4)
+			sh.position = base + img_to_local(pos[j], rot) + Vector3(0.07, 0.06, -0.05)
+			pieces.add_child(sh)
 		# orbitale e monolito
 		if hx["orb"]:
 			var tor := MeshInstance3D.new()

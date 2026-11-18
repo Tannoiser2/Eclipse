@@ -12,6 +12,9 @@ var names := ["", "", "", "", "", ""]
 var colors := [0, 1, 2, 3, 4, 5]
 var sides := [0, 1, 1, 1, 1, 1]          # 0 terrestri, 1 alieni
 var adv := 0
+var events := 0
+var minors := 0
+var turn_order := 0
 var speed := 1
 var anim := 1
 var msg: Label
@@ -30,6 +33,9 @@ func _ready() -> void:
 		speed = st["speed"]
 		anim = st.get("anim", 1)
 		adv = st.get("adv", 0)
+		events = st.get("events", 0)
+		minors = st.get("minors", 0)
+		turn_order = st.get("turn_order", 0)
 	page = Control.new()
 	page.size = Vector2(1920, 1080)
 	add_child(page)
@@ -66,6 +72,12 @@ func _ready() -> void:
 	col.add_child(seat_box)
 	col.add_child(UI.heading("Opzioni", 30))
 	col.add_child(_segmented("Antichi, Guardiani e SDCG", ["Progetti base", "Progetti avanzati"], adv, func(k): adv = k, 230))
+	var o1 := HBoxContainer.new()
+	o1.add_theme_constant_override("separation", 30)
+	col.add_child(o1)
+	o1.add_child(_segmented("Eventi galattici", ["No", "Sì"], events, func(k): events = k, 80))
+	o1.add_child(_segmented("Specie minori", ["No", "Sì"], minors, func(k): minors = k, 80))
+	col.add_child(_segmented("Ordine dei turni", ["Classico (in senso orario)", "Variante: chi passa prima"], turn_order, func(k): turn_order = k, 300))
 	var o2 := HBoxContainer.new()
 	o2.add_theme_constant_override("separation", 30)
 	col.add_child(o2)
@@ -105,7 +117,7 @@ func _center() -> void:
 
 func _store() -> void:
 	main.menu_state = {"nplayers": nplayers, "modes": modes.duplicate(), "names": names.duplicate(), "speed": speed,
-		"anim": anim, "adv": adv, "colors": colors.duplicate(), "sides": sides.duplicate()}
+		"anim": anim, "adv": adv, "colors": colors.duplicate(), "sides": sides.duplicate(), "events": events, "minors": minors, "turn_order": turn_order}
 
 
 func _refresh() -> void:
@@ -141,13 +153,28 @@ func _refresh() -> void:
 			colors[si] = i
 			_refresh())
 		row.add_child(co)
-		var pair: Array = D.COLOR_SPECIES[colors[s]]
-		var so := _option([D.species_title(pair[0]), D.species_title(pair[1])], sides[s], 330)
+		var opts := _species_list(colors[s])
+		var labels := []
+		for sp in opts:
+			labels.append(D.species_title(sp) + (" (esp.)" if D.SPECIES[sp].get("exp", false) else ""))
+		var so := _option(labels, clampi(sides[s], 0, opts.size() - 1), 330)
 		so.item_selected.connect(func(i):
 			sides[si] = i
 			_refresh())
 		row.add_child(so)
 	msg.text = ""
+
+
+## Specie sceglibili con un colore: le due facce della plancia e le specie delle espansioni.
+func _species_list(col: int) -> Array:
+	var out: Array = D.COLOR_SPECIES[col].duplicate()
+	out.append_array(D.EXP_SPECIES)
+	return out
+
+
+func _species_of(s: int) -> String:
+	var l := _species_list(colors[s])
+	return l[clampi(sides[s], 0, l.size() - 1)]
 
 
 func _option(items: Array, cur: int, w: float) -> OptionButton:
@@ -183,17 +210,33 @@ func _config() -> Dictionary:
 	var seats := []
 	for s in nplayers:
 		var col: int = colors[s]
-		var sp: String = D.COLOR_SPECIES[col][sides[s]]
+		var sp: String = _species_of(s)
 		var nm: String = names[s].strip_edges()
 		if nm == "":
 			nm = D.species_title(sp) if modes[s] == 0 else "%s (IA)" % D.species_title(sp)
 		seats.append({"name": nm, "ai": modes[s] != 0, "level": maxi(0, modes[s] - 1), "color": col, "species": sp})
 	var delays := [1.2, 0.6, 0.25, 0.0]
 	var anims := [0.6, 1.0, 1.8]
-	return {"seats": seats, "ai_delay": delays[speed], "anim": anims[anim], "adv_npc": adv == 1}
+	return {"seats": seats, "ai_delay": delays[speed], "anim": anims[anim], "adv_npc": adv == 1,
+		"events": events == 1, "minors": minors == 1, "turn_order": turn_order == 1}
+
+
+## Due civiltà non possono avere la stessa specie.
+func _dup_species() -> String:
+	var seen := {}
+	for s in nplayers:
+		var sp := _species_of(s)
+		if seen.has(sp):
+			return D.species_title(sp)
+		seen[sp] = true
+	return ""
 
 
 func _on_start() -> void:
+	var dup := _dup_species()
+	if dup != "":
+		msg.text = "%s è scelta da due civiltà: cambiane una." % dup
+		return
 	_store()
 	main.start_game(_config())
 
@@ -289,7 +332,7 @@ func _say(t: String) -> void:
 
 
 func _seat_name(i: int) -> String:
-	return D.species_title(D.COLOR_SPECIES[colors[i]][sides[i]])
+	return D.species_title(_species_of(i))
 
 
 func _seats_text(room: Dictionary) -> String:
@@ -306,6 +349,9 @@ func _online_create() -> void:
 	var nm := on_name.text.strip_edges()
 	if nm == "":
 		_say("Scrivi il tuo nome.")
+		return
+	if _dup_species() != "":
+		_say("%s è scelta da due civiltà: cambiane una nel menu." % _dup_species())
 		return
 	var seats := [0]
 	for s in range(1, nplayers):

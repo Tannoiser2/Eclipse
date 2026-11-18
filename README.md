@@ -18,8 +18,16 @@ Si gioca qui: https://tannoiser2.github.io/Eclipse/
 - Le 12 civiltà del gioco base: sei fazioni terrestri e Impero di Eridani, Progresso Hydran, Planta,
   Discendenti di Draco, Mechanema, Egemonia di Orione, ognuna con le sue regole speciali.
 - Progetti base o avanzati per Antichi, Guardiani e SDCG (si sceglie nel menu).
+- **Espansioni** (si attivano nel menu): le specie Esiliati, Sindacato di Rho Indi, Custodi di Magellano e
+  Illuminati di Lyra (con santuari, nave orbitale, scoperte sotto i tracciati e le altre regole speciali), gli
+  eventi galattici (nebulose, pulsar, buchi neri e supernove con il lato esploso), le specie minori e la variante
+  dell'ordine dei turni. Manca la Pyxis Unity, la cui trasmateria e le Lune della morte sono un gioco a parte.
 - **IA** in tre livelli per i posti vuoti: valuta settori, tecnologie e progetti, tiene d'occhio il mantenimento
-  e attacca solo quando una simulazione della battaglia le dà buone probabilità.
+  e attacca solo quando una simulazione della battaglia le dà buone probabilità. Segue i consigli dei giocatori
+  esperti: Robotica avanzata presto, scafi e cannoni migliori nei primi round, ricerca concentrata su uno o due
+  tracciati, corazzate preferite, Antichi attaccati presto per le scoperte. Usa anche pulsar, buchi neri,
+  santuari e specie minori. `tests/sim.gd` confronta due varianti dell'IA a coppie di partite (stessa mappa,
+  posti scambiati) con le variabili `EC_AB` ed `EC_AB0`.
 - **Mappa 3D**: le tessere settore originali su esagoni in rilievo, i cubetti sui pianeti veri delle tessere,
   i modelli 3D del modulo per intercettori, incrociatori, corazzate, basi stellari e la Luna nera dell'SDCG.
   Trascinare con un dito (o il mouse), pizzicare per lo zoom, ruotare e inclinare con due dita anche su iPad.
