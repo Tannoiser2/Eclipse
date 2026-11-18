@@ -62,6 +62,13 @@ func _run(np: int, w: int, h: int, sp: String) -> void:
 			last_round = g.engine.round_n
 			await create_timer(0.3).timeout
 			await _snap("round_%d" % last_round)
+			if last_round == 6:
+				for kd in ["plancia", "scorte"]:
+					g._board_dialog(0, kd)
+					await create_timer(0.4).timeout
+					await _snap("plancia_" + kd)
+					for c in g.popup_layer.get_children():
+						c.queue_free()
 		if g.dice_panel.visible and not taken.has("battaglia"):
 			taken["battaglia"] = true
 			await _snap("battaglia")

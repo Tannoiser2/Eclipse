@@ -33,7 +33,15 @@ Si gioca qui: https://tannoiser2.github.io/Eclipse/
   Trascinare con un dito (o il mouse), pizzicare per lo zoom, ruotare e inclinare con due dita anche su iPad.
 - **Online** con gli amici (stanze con codice di 4 lettere, chi esce può rientrare; se uno sparisce gioca l'IA).
 - **Partite salvate** su Firebase: «Salva» dà un codice di 6 lettere da usare in «Carica partita».
-- Tutto in italiano: interfaccia, diario, regole e titoli delle tessere (tecnologie, parti, scoperte e settori
+- **Plance originali** nel pannello a destra: la plancia della civiltà (progetti con le parti montate,
+  tecnologie sui tracciati, dischi influenza sul tracciato e sulle azioni usate, reputazione e ambasciatori)
+  e la plancia di popolazione e scorte (cubetti sui tracciati di produzione, segnalini delle scorte, navi
+  coloniali). Si toccano per ingrandirle; la scheda «Dettagli» ha il riepilogo in testo.
+- **Regole complete** a capitoli (plance, round, ogni azione, combattimento, scoperte, diplomazia, punteggio,
+  specie, elenco di tecnologie e parti, espansioni, consigli strategici).
+- **Tutorial**: dal menu, un round intero guidato passo passo su una partita preparata, con il perché di ogni
+  scelta e i consigli strategici; alla fine si può continuare la partita contro l'IA.
+- Tutto in italiano: interfaccia, diario, regole, scritte delle plance e titoli delle tessere (tecnologie, parti, scoperte e settori
   riscritti in italiano sulle immagini originali).
 
 ## Materiale
@@ -43,12 +51,12 @@ Dal modulo di Tabletop Simulator in `Desktop/Ludoteca/Eclipse` (file `.ttsmod`, 
 ```
 python3 tools/estrai_materiale.py <cartella Mods> .   # tessere, parti, scoperte, progetti, modelli 3D
 python3 tools/traduci_tessere.py                      # titoli in italiano sulle immagini
+python3 tools/traduci_plance.py <plance originali>     # scritte delle plance in italiano (assets/plance)
 ```
 
 I dati delle tessere (wormhole, pianeti, Antichi, artefatti di ogni settore; costi delle tecnologie; valori delle
 parti; plance delle specie) sono trascritti in `scripts/data/ec_data.gd`; le posizioni dei pianeti sulle
-immagini dei settori in `scripts/data/ec_pos.gd`. Il modulo contiene anche pezzi di espansioni (altre specie,
-specie minori, eventi galattici): non sono ancora nel gioco.
+immagini dei settori in `scripts/data/ec_pos.gd`; le caselle delle plance in `scripts/ui/player_board.gd`.
 
 ## Struttura
 
@@ -66,6 +74,8 @@ godot --headless --path . -s tests/sim.gd -- 4 5 -1               # partite fra 
 python3 tools/controlla_glifi.py                                  # ogni carattere esiste nei font
 xvfb-run godot --path . -s tests/shot.gd -- /tmp/foto 4 1920 1080 # fotografie dell'interfaccia
 python3 tests/firebase_mock.py 8765                               # finto Firebase per online_play.gd e save_load.gd
+xvfb-run godot --path . -s tests/tut_play.gd -- /tmp/tut 1920 1080 # percorre il tutorial e lo fotografa
+xvfb-run godot --path . -s tests/shot_rules.gd -- /tmp/reg 1920 1080 # fotografie delle regole
 ```
 
 ## Pubblicazione

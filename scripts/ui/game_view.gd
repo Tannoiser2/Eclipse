@@ -5,6 +5,7 @@ extends Control
 
 const D = preload("res://scripts/data/ec_data.gd")
 const SIDE_W := 540.0
+var side_tab := 0
 
 var main
 var config := {}
@@ -31,6 +32,7 @@ var _dirty := true
 var save_code := ""
 var humans: Array = []
 var info_hex := ""
+var tutorial = null
 
 
 func _ready() -> void:
@@ -111,6 +113,14 @@ func _build() -> void:
 	wait_lbl.add_theme_color_override("font_outline_color", Color.BLACK)
 	wait_lbl.add_theme_constant_override("outline_size", 6)
 	add_child(wait_lbl)
+
+	# tutorial (riquadro in alto a destra della mappa)
+	if config.get("tutorial", false):
+		tutorial = preload("res://scripts/ui/tutorial.gd").new()
+		tutorial.gv = self
+		add_child(tutorial)
+		_place_tutorial.call_deferred()
+		get_viewport().size_changed.connect(_place_tutorial)
 
 	# diario (in basso a sinistra, si apre e si chiude)
 	log_panel = PanelContainer.new()
@@ -278,6 +288,93 @@ func _side() -> void:
 	side_box.add_child(head)
 	var abil := UI.wrap(UI.label(str(S.get("txt", "")), 16, UI.MUTED, UI.font_italic), SIDE_W - 40)
 	side_box.add_child(abil)
+	_side_tabs(p, st)
+	if side_tab == 2:
+		_side_details(p, st, S)
+	# espansioni: specie minori, santuari, scoperta dei Custodi
+	if not st["minors"].is_empty():
+		var mn := []
+		for m in st["minors"]:
+			mn.append(D.MINORS[m]["name"])
+		side_box.add_child(UI.wrap(UI.label("Specie minori alleate: " + ", ".join(mn), 16, UI.GREEN), SIDE_W - 40))
+	if st["S"].get("shrines", false):
+		side_box.add_child(UI.wrap(UI.label("Santuari costruiti: %d su 9" % st["shrines"].size(), 16, UI.GOLD_L), SIDE_W - 40))
+	if not st["tech_disc"].is_empty():
+		side_box.add_child(UI.wrap(UI.label("Scoperta sotto i tracciati: si risolve alla quarta tecnologia di un tracciato.", 16, UI.MUTED), SIDE_W - 40))
+	var hole := 0
+	for sh in e.ships:
+		if int(sh["p"]) == p and sh["h"] == "hole":
+			hole += 1
+	if hole > 0:
+		side_box.add_child(UI.wrap(UI.label("Navi nel buco nero: %d" % hole, 16, UI.PINK), SIDE_W - 40))
+	if e.minors_on and not e.minors.is_empty():
+		var av := []
+		for m in e.minors:
+			av.append("%s (%d denaro)" % [D.MINORS[m]["name"], int(D.MINORS[m]["cost"])])
+		side_box.add_child(UI.wrap(UI.label("Specie minori libere: " + ", ".join(av), 15, UI.MUTED), SIDE_W - 40))
+	if not st["spare"].is_empty():
+		var sp := HBoxContainer.new()
+		sp.add_child(UI.label("Parti antiche da montare:", 16, UI.MUTED))
+		for pt in st["spare"]:
+			sp.add_child(UI.icon_rect(UI.part_tex(pt), Vector2(40, 40)))
+		side_box.add_child(sp)
+	# settore selezionato
+	if info_hex != "" and e.hexes.has(info_hex):
+		side_box.add_child(HSeparator.new())
+		side_box.add_child(_hex_info(info_hex))
+
+
+## Schede del pannello: plancia originale, plancia delle scorte, dettagli in testo.
+func _side_tabs(p: int, st: Dictionary) -> void:
+	var tabs := HBoxContainer.new()
+	tabs.add_theme_constant_override("separation", 6)
+	var names := ["Plance", "Dettagli"]
+	for i in names.size():
+		var ii := i * 2
+		var b := UI.button(names[i], 150, 42, 18)
+		if ii == side_tab:
+			UI.primary(b)
+		b.pressed.connect(func():
+			side_tab = ii
+			_side())
+		tabs.add_child(b)
+	tabs.add_child(UI.wrap(UI.label("Tocca una plancia per ingrandirla", 16, UI.MUTED), SIDE_W - 360))
+	side_box.add_child(tabs)
+	if side_tab == 2:
+		return
+	var show := humans.has(p) or humans.is_empty()
+	var w := SIDE_W - 34
+	for kind in ["plancia", "scorte"]:
+		var kk: String = kind
+		var pb := ECPlayerBoard.new().setup(engine, p, kind, show)
+		pb.custom_minimum_size = Vector2(w, w * pb.aspect())
+		pb.clicked.connect(func(): _board_dialog(p, kk))
+		side_box.add_child(pb)
+	var sc := engine.score(p)
+	var up := engine.upkeep(p)
+	var net := engine.prod(p, "$") - up
+	side_box.add_child(UI.wrap(UI.label("Punti %d · produzione: materiali +%d, scienza +%d, denaro +%d · mantenimento %d (saldo %s%d) · commercio %d:1" % [
+		sc["totale"], engine.prod(p, "m"), engine.prod(p, "s"), engine.prod(p, "$"), up, "+" if net >= 0 else "", net, engine.trade_rate(p)],
+		17, UI.RED if int(st["res"]["$"]) + net < 0 else UI.GOLD_L), w))
+
+
+## La plancia a tutta finestra, per leggerla bene (anche su iPad).
+func _board_dialog(p: int, kind: String) -> void:
+	var vs := get_viewport_rect().size
+	var asp := ECPlayerBoard.BH / ECPlayerBoard.BW if kind == "plancia" else ECPlayerBoard.SH / ECPlayerBoard.SW
+	var w := minf(vs.x - 120, (vs.y - 230) / asp)
+	var dlg := _dialog("%s di %s" % ["Plancia" if kind == "plancia" else "Popolazione e scorte", engine.pname(p)], w + 40)
+	var pb := ECPlayerBoard.new().setup(engine, p, kind, humans.has(p) or humans.is_empty())
+	pb.custom_minimum_size = Vector2(w, w * asp)
+	dlg["box"].add_child(pb)
+	var cl := UI.button("Chiudi", 200, 50, 20)
+	cl.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	cl.pressed.connect(func(): dlg["root"].queue_free())
+	dlg["box"].add_child(cl)
+
+
+func _side_details(p: int, st: Dictionary, S: Dictionary) -> void:
+	var e := engine
 	# risorse
 	var rb := HBoxContainer.new()
 	rb.add_theme_constant_override("separation", 18)
@@ -346,37 +443,6 @@ func _side() -> void:
 	side_box.add_child(UI.heading("Progetti delle navi", 19))
 	for s in st["types"]:
 		side_box.add_child(_bp_row(p, s, null))
-	# espansioni: specie minori, santuari, scoperta dei Custodi
-	if not st["minors"].is_empty():
-		var mn := []
-		for m in st["minors"]:
-			mn.append(D.MINORS[m]["name"])
-		side_box.add_child(UI.wrap(UI.label("Specie minori alleate: " + ", ".join(mn), 16, UI.GREEN), SIDE_W - 40))
-	if st["S"].get("shrines", false):
-		side_box.add_child(UI.wrap(UI.label("Santuari costruiti: %d su 9" % st["shrines"].size(), 16, UI.GOLD_L), SIDE_W - 40))
-	if not st["tech_disc"].is_empty():
-		side_box.add_child(UI.wrap(UI.label("Scoperta sotto i tracciati: si risolve alla quarta tecnologia di un tracciato.", 16, UI.MUTED), SIDE_W - 40))
-	var hole := 0
-	for sh in e.ships:
-		if int(sh["p"]) == p and sh["h"] == "hole":
-			hole += 1
-	if hole > 0:
-		side_box.add_child(UI.wrap(UI.label("Navi nel buco nero: %d" % hole, 16, UI.PINK), SIDE_W - 40))
-	if e.minors_on and not e.minors.is_empty():
-		var av := []
-		for m in e.minors:
-			av.append("%s (%d denaro)" % [D.MINORS[m]["name"], int(D.MINORS[m]["cost"])])
-		side_box.add_child(UI.wrap(UI.label("Specie minori libere: " + ", ".join(av), 15, UI.MUTED), SIDE_W - 40))
-	if not st["spare"].is_empty():
-		var sp := HBoxContainer.new()
-		sp.add_child(UI.label("Parti antiche da montare:", 16, UI.MUTED))
-		for pt in st["spare"]:
-			sp.add_child(UI.icon_rect(UI.part_tex(pt), Vector2(40, 40)))
-		side_box.add_child(sp)
-	# settore selezionato
-	if info_hex != "" and e.hexes.has(info_hex):
-		side_box.add_child(HSeparator.new())
-		side_box.add_child(_hex_info(info_hex))
 
 
 ## Riga di un progetto: nome, costo, caselle con le parti e i valori complessivi.
@@ -642,12 +708,14 @@ func _dialog(title_text: String, w: float, modal := true) -> Dictionary:
 		if not is_instance_valid(box):
 			return
 		var vs := get_viewport_rect().size
-		var k := minf(1.0, minf((vs.x - 40) / (w + 40), (vs.y - 40) / 900.0))
+		# con il tutorial aperto le finestre stanno a destra del suo riquadro
+		var left := 600.0 if (tutorial != null and is_instance_valid(tutorial) and not tutorial._collapsed and modal) else 0.0
+		var k := minf(1.0, minf((vs.x - left - 40) / (w + 40), (vs.y - 40) / 900.0))
 		box.scale = Vector2(k, k)
 		var hgt: float = minf(vb.get_combined_minimum_size().y + 30, (vs.y - 60) / k)
 		sc.custom_minimum_size = Vector2(w + 16, hgt)
 		box.reset_size()
-		box.position = (vs - box.size * k) * 0.5
+		box.position = Vector2(left + (vs.x - left - box.size.x * k) * 0.5, (vs.y - box.size.y * k) * 0.5)
 	fit.call_deferred()
 	get_tree().create_timer(0.06).timeout.connect(fit)
 	return {"root": root, "box": vb, "fit": fit}
@@ -668,17 +736,9 @@ func _ask_menu() -> void:
 
 
 func _show_rules() -> void:
-	var dlg := _dialog("Regole in breve", 1100)
-	var rt := RichTextLabel.new()
-	rt.bbcode_enabled = true
-	rt.fit_content = true
-	rt.custom_minimum_size = Vector2(1080, 0)
-	rt.text = preload("res://scripts/ui/rules_view.gd").RULES
-	dlg["box"].add_child(rt)
-	var cl := UI.button("Chiudi", 220, 54, 20)
-	cl.pressed.connect(func(): dlg["root"].queue_free())
-	cl.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	dlg["box"].add_child(cl)
+	var book = preload("res://scripts/ui/rules_view.gd").new()
+	book.on_close = func(): pass
+	popup_layer.add_child(book)
 
 
 func _show_scores() -> void:
@@ -775,6 +835,8 @@ func _clear_prompt() -> void:
 
 func _submit(r) -> void:
 	var req := pending
+	if tutorial != null and is_instance_valid(tutorial) and not req.is_empty() and not tutorial.accept(r):
+		return
 	_clear_prompt()
 	if req.is_empty():
 		return
@@ -839,6 +901,18 @@ func _on_decision(req: Dictionary) -> void:
 		"shrine": _ui_shrine(req)
 		_:
 			_submit({"stop": true})
+	if tutorial != null and is_instance_valid(tutorial) and humans.has(p):
+		tutorial.on_request(req)
+
+
+func _place_tutorial() -> void:
+	var on: bool = tutorial != null and is_instance_valid(tutorial) and not tutorial.is_queued_for_deletion()
+	var open: bool = on and not tutorial._collapsed
+	board.offset_left = 600.0 if open else 0.0
+	toast_box.position.x = 620.0 if on else 16.0
+	if on:
+		tutorial.position = Vector2(12, 160)
+		tutorial.size.x = 580
 
 
 func _who(req: Dictionary) -> String:
